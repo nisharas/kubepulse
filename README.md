@@ -6,6 +6,8 @@
 
 **KubeCuro** is a high-performance, production-grade CLI tool designed to eliminate the "silent killers" of Kubernetes deployments. While standard linters merely validate YAML syntax, KubeCuro performs a deep-tissue scan to ensure your infrastructure is **Syntactically Healthy**, **Logically Connected**, and **API Future-Proof**.
 
+**KubeCuro** isn't just another linter; it's a "Kubernetes Sanitizer." While most tools focus on schema validation, KubeCuro focuses on the functional integrity of your entire manifest suite. It bridges the gap between writing YAML and successfully running it.
+
 ---
 
 ## 📄 Project Metadata
@@ -25,11 +27,28 @@
 
 ---
 
-## 🚀 The Triple-Engine Defense
+## 🛠️ The Three Pillars of KubeCuro
+| Engine | Purpose | Real-World Value |
+| --- | --- | --- |
+! 🩺 Healer | Auto-Fixing | Stops "Death by Indentation." Automatically repairs syntax and formatting issues, showing a clear diff of changes. |
+| 🧠 Synapse | Logic Audit | Detects "Ghost Services." Ensures that Selectors, Labels, and Ports actually align across different files. |
+| 🛡️ Shield | Security & Versioning | Prevents "API Rot." Flags deprecated API versions and insecure configurations before they hit your cluster. |
 
-1. **🩹 The Healer (Syntax Engine):** Uses a **Split-Stream** architecture to safely process multi-document YAMLs. It auto-remediates missing colons and standardizes indentation.
-2. **🧠 The Synapse (Logic Engine):** A deep-link analyzer that validates **Selectors vs. Labels**, **Namespace isolation**, and **Port mapping** (including named ports).
-3. **🛡️ The Shield (API Shield Engine):** A context-aware deprecation guard that identifies resource types and suggests specific modern API paths.
+---
+
+## 🚀 Why use KubeCuro?
+1. Reduce "Developer Friction"
+Instead of a CI/CD pipeline failing with a cryptic "Invalid YAML" error, KubeCuro tells the developer exactly what happened and, in many cases, fixes it for them. This reduces the back-and-forth between Dev and Ops.
+
+2. Prevent Silent Failures
+A Service with a typo in its selector won't throw a Kubernetes error—it just won't send traffic to your Pods. These "silent failures" are the hardest to debug. Synapse catches these instantly.
+
+3. Zero-Dependency Portability
+Thanks to the static build process, KubeCuro is a single, 50MB binary.
+
+    * No Python required.
+    * No pip install.
+    * Just chmod +x and run. This makes it perfect for Scratch-based Docker images or restricted CI runners.
 
 ---
 
@@ -128,6 +147,15 @@ FINAL SUMMARY
 👉 [API]: Update 'apiVersion' to 'networking.k8s.io/v1' for Ingress.
 ======================================================================
 ```
+
+---
+
+## 📈 Roadmap to v1.1.0
+To further increase the value, we are looking at:
+   
+  * --json output: For easy integration with monitoring dashboards.
+  * Helm Support: Directly scanning Helm templates before rendering.
+  * GitHub Action: A first-party action to "Cure" your PRs automatically.
 
 ---
 
