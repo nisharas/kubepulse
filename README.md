@@ -110,6 +110,29 @@ pip install -e .
 
 ---
 
+📊 Sample Report
+KubePulse provides a clear, severity-ranked breakdown of your infrastructure's health:
+
+Plaintext
+
+📊 FINAL PULSE SUMMARY
++-----------+------------+----------+----------------+--------------+
+| File Name | Severity   | Engine   | Issues Found   | Status       |
++===========+============+==========+================+==============+
+| web.yaml  | 🔴 HIGH    | Synapse  | GHOST          | ❌ Logic Gap |
++-----------+------------+----------+----------------+--------------+
+| ing.yaml  | 🟠 MED     | Shield   | DEPRECATED API | ⚠️ Warning   |
++-----------+------------+----------+----------------+--------------+
+
+💡 SUGGESTED REMEDIATIONS:
+======================================================================
+👉 [GHOST]: Update Service 'selector' to match Pod 'labels'.
+👉 [PORT]: Align Service 'targetPort' with Pod 'containerPort'.
+👉 [API]: Update 'apiVersion' to 'networking.k8s.io/v1' for Ingress.
+======================================================================
+
+---
+
 ## 💬 Feedback & Contribution
 
 KubePulse is built for the community.
