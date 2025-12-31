@@ -110,19 +110,19 @@ pip install -e .
 
 ---
 
-📊 Sample Report
+## 📊 Sample Report
+
 KubePulse provides a clear, severity-ranked breakdown of your infrastructure's health:
 
 Plaintext
 
 📊 FINAL PULSE SUMMARY
-+-----------+------------+----------+----------------+--------------+
 | File Name | Severity   | Engine   | Issues Found   | Status       |
-+===========+============+==========+================+==============+
+| --- | --- | --- | --- | --- |
 | web.yaml  | 🔴 HIGH    | Synapse  | GHOST          | ❌ Logic Gap |
-+-----------+------------+----------+----------------+--------------+
+| --- | --- | --- | --- | --- |
 | ing.yaml  | 🟠 MED     | Shield   | DEPRECATED API | ⚠️ Warning   |
-+-----------+------------+----------+----------------+--------------+
+
 
 💡 SUGGESTED REMEDIATIONS:
 ======================================================================
