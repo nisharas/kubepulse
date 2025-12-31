@@ -1,4 +1,4 @@
-# 💓 KubePulse
+💓 KubePulse
 
 [![Kubernetes](https://img.shields.io/badge/kubernetes-%23326ce5.svg?style=flat&logo=kubernetes&logoColor=white)](https://kubernetes.io)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
@@ -49,9 +49,34 @@ KubePulse is designed with a "Security-First" architecture, operating as a local
 **Scan a Single File**
 ```bash
 kubepulse pod.yaml
-Scan an Entire DirectoryCross-references all manifests within the folder to find logical gaps.Bashkubepulse ./k8s-manifests/
-Get HelpBashkubepulse --help
-🛠️ InstallationOption A: Standalone Binary (Recommended)Zero dependencies. Download and install directly via terminal:Bash# Download the latest binary
+
+```
+
+**Scan an Entire Directory**
+Cross-references all manifests within the folder to find logical gaps.
+
+```bash
+kubepulse ./k8s-manifests/
+
+```
+
+**Get Help**
+
+```bash
+kubepulse --help
+
+```
+
+---
+
+## 🛠️ Installation
+
+### Option A: Standalone Binary (Recommended)
+
+Zero dependencies. Download and install directly via terminal:
+
+```bash
+# Download the latest binary
 curl -L -O [https://github.com/nisharas/kubepulse/releases/download/v1.0.0/kubepulse](https://github.com/nisharas/kubepulse/releases/download/v1.0.0/kubepulse)
 
 # Set execution permissions
@@ -59,7 +84,39 @@ chmod +x kubepulse
 
 # Move to your local bin path
 sudo mv kubepulse /usr/local/bin/
-Option B: From Source (Developers)Bashgit clone [https://github.com/nisharas/kubepulse.git](https://github.com/nisharas/kubepulse.git)
+
+```
+
+### Option B: From Source (Developers)
+
+```bash
+git clone [https://github.com/nisharas/kubepulse.git](https://github.com/nisharas/kubepulse.git)
 cd kubepulse
 pip install -e .
-🩺 Diagnostic IntelligenceSignalCategoryResolution Strategy🩺 DIAGNOSTICStructureAuto-heals syntax and indentation.🌐 NAMESPACEConnectivityAlign the namespace field between Service & Pod.👻 GHOSTOrphanageMatch Service selectors to Deployment template labels.🔌 PORTNetworkingAlign targetPort in Service with containerPort in Pod.🛡️ API SHIELDComplianceMigrate to the recommended stable API version.💬 Feedback & ContributionKubePulse is built for the community.Found a bug? Open an Issue.Have a feature idea? Email me at fixmyk8s@protonmail.comBuilt with ❤️ by Nishar A Sunkesala / FixMyK8s.
+
+```
+
+---
+
+## 🩺 Diagnostic Intelligence
+
+| Signal | Category | Resolution Strategy |
+| --- | --- | --- |
+| **🩺 DIAGNOSTIC** | Structure | Auto-heals syntax and indentation. |
+| **🌐 NAMESPACE** | Connectivity | Align the `namespace` field between Service & Pod. |
+| **👻 GHOST** | Orphanage | Match Service `selectors` to Deployment `template` labels. |
+| **🔌 PORT** | Networking | Align `targetPort` in Service with `containerPort` in Pod. |
+| **🛡️ API SHIELD** | Compliance | Migrate to the recommended stable API version. |
+
+---
+
+## 💬 Feedback & Contribution
+
+KubePulse is built for the community.
+
+* **Found a bug?** Open an [Issue](https://github.com/nisharas/kubepulse/issues).
+* **Have a feature idea?** Email me at **fixmyk8s@protonmail.com**
+
+**Built with ❤️ by Nishar A Sunkesala / [FixMyK8s](https://github.com/nisharas).**
+
+
