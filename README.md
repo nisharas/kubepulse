@@ -77,7 +77,7 @@ Zero dependencies. Download and install directly via terminal:
 
 ```bash
 # Download the latest binary
-curl -L -O [https://github.com/nisharas/kubepulse/releases/download/v1.0.0/kubepulse](https://github.com/nisharas/kubepulse/releases/download/v1.0.0/kubepulse)
+curl -L -O https://github.com/nisharas/kubepulse/releases/download/v1.0.0/kubepulse
 
 # Set execution permissions
 chmod +x kubepulse
@@ -90,7 +90,7 @@ sudo mv kubepulse /usr/local/bin/
 ### Option B: From Source (Developers)
 
 ```bash
-git clone [https://github.com/nisharas/kubepulse.git](https://github.com/nisharas/kubepulse.git)
+git clone https://github.com/nisharas/kubepulse.git
 cd kubepulse
 pip install -e .
 
