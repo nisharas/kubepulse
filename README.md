@@ -1,6 +1,3 @@
----
-
-```markdown
 # 💓 KubePulse
 
 [![Kubernetes](https://img.shields.io/badge/kubernetes-%23326ce5.svg?style=flat&logo=kubernetes&logoColor=white)](https://kubernetes.io)
