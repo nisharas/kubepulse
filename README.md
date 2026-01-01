@@ -30,7 +30,7 @@
 ## 🛠️ The Three Pillars of KubeCuro
 | Engine | Purpose | Real-World Value |
 | --- | --- | --- |
-! 🩺 Healer | Auto-Fixing | Stops "Death by Indentation." Automatically repairs syntax and formatting issues, showing a clear diff of changes. |
+| 🩺 Healer | Auto-Fixing | Stops "Death by Indentation." Automatically repairs syntax and formatting issues, showing a clear diff of changes. |
 | 🧠 Synapse | Logic Audit | Detects "Ghost Services." Ensures that Selectors, Labels, and Ports actually align across different files. |
 | 🛡️ Shield | Security & Versioning | Prevents "API Rot." Flags deprecated API versions and insecure configurations before they hit your cluster. |
 
@@ -44,7 +44,7 @@ Instead of a CI/CD pipeline failing with a cryptic "Invalid YAML" error, KubeCur
 A Service with a typo in its selector won't throw a Kubernetes error—it just won't send traffic to your Pods. These "silent failures" are the hardest to debug. Synapse catches these instantly.
 
 3. Zero-Dependency Portability
-Thanks to the static build process, KubeCuro is a single, 50MB binary.
+Thanks to the static build process, KubeCuro is a single, 10MB binary.
 
     * No Python required.
     * No pip install.
