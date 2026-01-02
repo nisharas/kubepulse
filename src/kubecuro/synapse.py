@@ -28,10 +28,12 @@ class Synapse:
         try:
             fname = os.path.basename(file_path)
             with open(file_path, 'r') as f:
-                docs = list(self.yaml.load_all(f))
+                content = f.read()
+                if not content.strip(): return # Skip empty files
+                docs = list(self.yaml.load_all(content))
             
             for doc in docs:
-                if not doc or 'kind' not in doc: continue
+                if not doc or not isinstance(doc, dict) or 'kind' not in doc: continue
                 
                 # 1. Tag origin and store in the master list for Shield API checks
                 doc['_origin_file'] = fname
@@ -99,7 +101,7 @@ class Synapse:
         # --- AUDIT: Service to Pod Matching ---
         for svc in self.consumers:
             if not svc['selector']: continue
-            matches = [p for p in self.producers if all(item in p['labels'].items() for item in svc['selector'].items())]
+            matches = [p for p in self.producers if p['namespace'] == svc['namespace'] and all(item in p['labels'].items() for item in svc['selector'].items())]
             if not matches:
                 results.append(AuditIssue("Synapse", "GHOST", "🔴 HIGH", svc['file'], 
                     f"Service '{svc['name']}' matches 0 Pods.", "Update Service selector."))
