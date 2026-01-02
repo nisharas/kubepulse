@@ -10,7 +10,7 @@ except ImportError:
     YAML = ruamel.yaml.YAML
 
 def linter_engine(file_path):
-    yaml = YAML()
+    yaml = YAML(typ='rt', pure=True)
     yaml.indent(mapping=2, sequence=4, offset=2)
     yaml.preserve_quotes = True
     
