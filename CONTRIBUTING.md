@@ -1,4 +1,5 @@
-# Contributing to Kubecuro 💓
+# Contributing to Kubecuro 
+<img src="https://github.com/nisharas/kubecuro/blob/main/assets/KubeCuro%20Logo%20.png?raw=true" width="300">
 
 Welcome! We are excited that you want to help make Kubernetes deployments more reliable. As a project aiming for the CNCF Sandbox, we value transparency, inclusion, and high-quality "Logic Checks."
 
