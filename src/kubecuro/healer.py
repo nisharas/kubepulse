@@ -69,8 +69,8 @@ def linter_engine(file_path, apply_api_fixes=True):
             except Exception:
                 # If parsing fails after regex, keep the regex-cleaned string
                 healed_parts.append(d.strip())
-
-        healed_final = "---\n" + "\n---\n".join(healed_parts) + "\n"
+        
+        healed_final = "---\n" + "\n---\n".join(p.strip() for p in healed_parts if p.strip()) + "\n"
 
         # Generate Diff for the console output
         diff = list(difflib.unified_diff(
