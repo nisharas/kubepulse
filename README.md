@@ -137,6 +137,17 @@ SUCCESS: Configuration file 'web-service.yaml' has been healed.
 
 ✔ Diagnosis Complete. Powered by FixMyK8s.
 ```
+## 🖥️ Compatibility & Requirements
+
+KubeCuro is distributed as a **fully static Linux binary**. 
+
+* **OS:** Linux (Any distribution: Ubuntu, CentOS, Alpine, RHEL, etc.)
+* **Architecture:** x86_64 (64-bit Intel/AMD processors only)
+* **Dependencies:** None. (Self-contained static binary)
+
+> **Note:** This binary will not run on ARM64 architectures (e.g., Apple M-series chips, Raspberry Pi, or AWS Graviton) or non-Linux operating systems (Windows/macOS) natively.
+---
+
 ## 🛠️ Installation
 
 ### Option A: Standalone Binary (Recommended)
