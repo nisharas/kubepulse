@@ -13,7 +13,7 @@ from .models import AuditIssue
 
 class Synapse:
     def __init__(self):
-        self.yaml = YAML()
+        self.yaml = YAML(typ='safe', pure=True)
         self.producers = []  # Deployments, Pods, StatefulSets
         self.consumers = []  # Services
         # Tracking files that have already been flagged
