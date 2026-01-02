@@ -172,7 +172,7 @@ def run():
 
     # --- PHASE C: SHIELD (Static API Security Audit) ---
     # We audit all workloads extracted by Synapse for deprecations
-    for doc in syn.workload_docs:
+    for doc in syn.all_docs:
         warn = shield.check_version(doc)
         if warn:
             # Attribution using the Synapse origin tag
