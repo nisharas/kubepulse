@@ -6,17 +6,18 @@ PURPOSE:        Main Entry Point for KubeCuro with Rich UI.
 """
 import sys
 import os
+import logging
+from typing import List # Add this
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.logging import RichHandler
-import logging
 
 from .healer import linter_engine
 from .synapse import Synapse
 from .shield import Shield
-from .models import AuditIssue  
-from .utils.logger import get_logger Shield
+from .models import AuditIssue
+from .utils.logger import get_logger
 
 # Setup Rich Logging
 logging.basicConfig(level="INFO", format="%(message)s", datefmt="[%X]", handlers=[RichHandler(rich_tracebacks=True)])
