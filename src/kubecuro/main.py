@@ -100,7 +100,7 @@ def run():
             # 3. Shield (API Deprecation Scan)
             try:
                 from ruamel.yaml import YAML
-                y = YAML()
+                y = YAML(typ='safe', pure=True)
                 with open(f, 'r') as content:
                     docs = list(y.load_all(content))
                     for d in docs:
