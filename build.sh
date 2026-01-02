@@ -32,3 +32,4 @@ echo "✅ 4. Build Complete!"
 echo "--------------------------------------"
 echo "Binary location: $(pwd)/dist/kubecuro"
 echo "Test it now: ./dist/kubecuro --help"
+./dist/kubecuro --help
