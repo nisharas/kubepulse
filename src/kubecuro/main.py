@@ -45,7 +45,7 @@ def run():
     # Handle Help Menu
     if args.help or (not args.target and not args.version):
         console.print(Panel.fit(
-            "💓 [bold magenta]KubeCuro[/bold magenta] | Kubernetes Logic Diagnostics\n\n"
+            "❤️ [bold magenta]KubeCuro[/bold magenta] | Kubernetes Logic Diagnostics\n\n"
             "[bold cyan]Usage:[/bold cyan] kubecuro <file_or_directory>\n\n"
             "[bold yellow]Options:[/bold yellow]\n"
             "  -h, --help      Show this menu\n"
@@ -66,7 +66,7 @@ def run():
         sys.exit(1)
 
     # Header Panel
-    console.print(Panel("💓 [bold white]KubeCuro: Kubernetes Logic Diagnostics[/bold white]", style="bold magenta"))
+    console.print(Panel("❤️ [bold white]KubeCuro: Kubernetes Logic Diagnostics[/bold white]", style="bold magenta"))
     
     syn = Synapse()
     shield = Shield()
