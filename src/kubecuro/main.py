@@ -33,6 +33,18 @@ logging.basicConfig(
 log = logging.getLogger("rich")
 console = Console()
 
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        # If not running as a binary, use the standard directory structure
+        # Moving up from src/kubecuro/ to the root
+        base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+
+    return os.path.join(base_path, relative_path)
+
 # --- Extensive Resource Explanations Catalog ---
 EXPLAIN_CATALOG = {
     "service": """
@@ -96,6 +108,7 @@ KubeCuro checks for **Placement Contradictions**:
 
 def show_help():
     help_console = Console()
+    logo_file = resource_path("assets/Kubecuro Logo .png")
     help_console.print(Panel("[bold green]❤️ KubeCuro[/bold green] | Kubernetes Logic Diagnostics", expand=False))
     help_console.print("\n[bold yellow]Usage:[/bold yellow] kubecuro [command] [target]")
     
