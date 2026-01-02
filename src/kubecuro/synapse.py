@@ -14,8 +14,9 @@ from .shield import Shield
 class Synapse:
     def __init__(self):
         self.yaml = YAML(typ='safe', pure=True)
-        self.producers = []      # Workload metadata
-        self.workload_docs = []  # Raw docs for Shield
+        self.all_docs = []       # EVERY doc encountered (For 100% API Coverage)
+        self.producers = []      # Workload metadata for logic mapping
+        self.workload_docs = []  # Specifically Pod-bearing docs for HPA checks
         self.consumers = []      # Services
         self.ingresses = []      # Ingress objects
         self.configs = []        # ConfigMaps and Secrets
@@ -32,14 +33,16 @@ class Synapse:
             for doc in docs:
                 if not doc or 'kind' not in doc: continue
                 
-                # Tag origin for reporting
+                # 1. Tag origin and store in the master list for Shield API checks
                 doc['_origin_file'] = fname
+                self.all_docs.append(doc)
+                
                 kind = doc['kind']
                 name = doc.get('metadata', {}).get('name', 'unknown')
                 ns = doc.get('metadata', {}).get('namespace', 'default')
                 spec = doc.get('spec', {})
 
-                # --- 1. Workloads (Producers) ---
+                # --- 2. Workloads (Producers) ---
                 if kind in ['Deployment', 'Pod', 'StatefulSet', 'DaemonSet']:
                     self.workload_docs.append(doc)
                     template = spec.get('template', {}) if kind != 'Pod' else doc
@@ -52,12 +55,10 @@ class Synapse:
                     volumes = pod_spec.get('volumes', [])
                     
                     for c in containers:
-                        # Collect Ports
                         for p in c.get('ports', []):
                             if p.get('containerPort'): container_ports.append(p.get('containerPort'))
                             if p.get('name'): container_ports.append(p.get('name'))
                         
-                        # Collect Probes
                         for p_type in ['livenessProbe', 'readinessProbe', 'startupProbe']:
                             p_data = c.get(p_type)
                             if p_data and 'httpGet' in p_data:
@@ -69,7 +70,7 @@ class Synapse:
                         'serviceName': spec.get('serviceName'), 'volumes': volumes
                     })
 
-                # --- 2. Services (Consumers) ---
+                # --- 3. Services (Consumers) ---
                 elif kind == 'Service':
                     self.consumers.append({
                         'name': name, 'namespace': ns, 'file': fname,
@@ -78,7 +79,7 @@ class Synapse:
                         'clusterIP': spec.get('clusterIP')
                     })
 
-                # --- 3. Ingress, HPA, Configs ---
+                # --- 4. Ingress, HPA, Configs ---
                 elif kind == 'Ingress':
                     self.ingresses.append({'name': name, 'namespace': ns, 'file': fname, 'spec': spec})
                 elif kind == 'HorizontalPodAutoscaler':
@@ -110,7 +111,6 @@ class Synapse:
                 paths = rule.get('http', {}).get('paths', [])
                 for path in paths:
                     backend = path.get('backend', {})
-                    # Handle both old (serviceName) and new (service.name) Ingress schemas
                     svc_name = backend.get('serviceName') or backend.get('service', {}).get('name')
                     if svc_name:
                         match = next((s for s in self.consumers if s['name'] == svc_name and s['namespace'] == ing['namespace']), None)
@@ -131,11 +131,12 @@ class Synapse:
                         results.append(AuditIssue("Synapse", "VOL_MISSING", "🟠 MED", p['file'], 
                             f"Workload references missing ConfigMap/Secret '{ref_name}'.", "Verify resource existence."))
 
-        # --- AUDIT: HPA, Probes, and StatefulSets (Existing Logic) ---
+        # --- AUDIT: HPA Deep Logic ---
         for hpa in self.hpas:
             for err in shield.audit_hpa(hpa['doc'], self.workload_docs):
                 results.append(AuditIssue("Shield", "HPA_LOGIC", "🔴 HIGH", hpa['file'], err, "Add resource requests."))
 
+        # --- AUDIT: Health Probe Gaps ---
         for p in self.producers:
             for probe in p.get('probes', []):
                 if probe['port'] and probe['port'] not in p['ports']:
