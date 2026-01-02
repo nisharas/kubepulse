@@ -6,10 +6,11 @@ build-backend = "setuptools.build_meta"
 name = "kubecuro"
 version = "1.0.0"
 description = "A 3-in-1 Heartbeat Monitor for Kubernetes Manifests"
-dependencies = [
-    "ruamel.yaml",
+authors = [
+    {name = "Nishar A Sunkesala", email = "fixmyk8s@protonmail.com"}
 ]
-
+readme = "README.md"
+requires-python = ">=3.7"
 dependencies = [
     "ruamel.yaml>=0.17.0",
     "rich>=12.0.0",
@@ -18,3 +19,9 @@ dependencies = [
 
 [project.scripts]
 kubecuro = "kubecuro.main:run"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
