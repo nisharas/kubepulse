@@ -2,13 +2,14 @@
 """
 --------------------------------------------------------------------------------
 AUTHOR:      Nishar A Sunkesala / FixMyK8s
-PURPOSE:     The Healer Engine: Syntax Repair & API Version Migration.
+PURPOSE:      The Healer Engine: Syntax Repair & API Version Migration.
 --------------------------------------------------------------------------------
 """
 import sys
 import re
 import difflib
 import os
+# Use StringIO to capture YAML output into a string variable
 from io import StringIO
 from ruamel.yaml import YAML
 
@@ -69,7 +70,7 @@ def linter_engine(file_path, apply_api_fixes=True, dry_run=False):
                         # Look for specific resource replacement (e.g., Ingress) or use default
                         new_api = mapping.get(kind, mapping.get("default")) if isinstance(mapping, dict) else mapping
                         
-                        if new_api and not new_api.startswith("REMOVED"):
+                        if new_api and not str(new_api).startswith("REMOVED"):
                             parsed['apiVersion'] = new_api
 
                 if parsed:
@@ -97,6 +98,7 @@ def linter_engine(file_path, apply_api_fixes=True, dry_run=False):
         if not diff:
             return False # No healing needed, file is already healthy
         
+        # --- Phase 3: Commit Logic ---
         # If not a dry run, commit the changes to the file
         if not dry_run:
             with open(file_path, 'w') as f:
@@ -104,9 +106,10 @@ def linter_engine(file_path, apply_api_fixes=True, dry_run=False):
             return True
         else:
             # In dry-run, we return True if changes *would* have been made
+            # This allows main.py to still report it as a "detected issue"
             return True
 
-    except Exception as e:
+    except Exception:
         # Prevent the tool from crashing on a single bad file
         return False
 
@@ -114,7 +117,7 @@ if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] in ["-h", "--help"]:
         print("Usage: healer.py <filename.yaml>")
     else:
-        # Manual test mode
+        # Manual test mode for single file debugging
         success = linter_engine(sys.argv[1])
         if success:
             print(f"✅ Successfully healed {sys.argv[1]}")
