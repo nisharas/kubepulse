@@ -1,7 +1,7 @@
 """
 --------------------------------------------------------------------------------
 AUTHOR:          Nishar A Sunkesala / FixMyK8s
-PURPOSE:         The Shield Engine: API Deprecation & Resource Stability Guard.
+PURPOSE:          The Shield Engine: API Deprecation & Resource Stability Guard.
 --------------------------------------------------------------------------------
 """
 
@@ -42,15 +42,16 @@ class Shield:
         
         if api in self.DEPRECATIONS:
             mapping = self.DEPRECATIONS[api]
-            # If mapping is a dict, look for Kind-specific replacement, else use default
             better = mapping.get(kind, mapping.get("default")) if isinstance(mapping, dict) else mapping
             return f"🛡️ [DEPRECATED API] {kind} uses '{api}'. Upgrade to '{better}'."
         
-        # --- NEW: Production Security Check ---
-        # Flags privileged containers which are a major security risk
+        # --- Security Check: Privileged Mode ---
         if kind in ['Deployment', 'Pod', 'StatefulSet', 'DaemonSet']:
-            template = doc.get('spec', {}).get('template', {}) if kind != 'Pod' else doc
-            containers = template.get('spec', {}).get('containers', [])
+            spec = doc.get('spec') or {}
+            template = spec.get('template') or {} if kind != 'Pod' else doc
+            t_spec = template.get('spec') or {}
+            containers = t_spec.get('containers') or []
+            
             for c in containers:
                 if c.get('securityContext', {}).get('privileged'):
                     return f"🚨 [SECURITY RISK] Container '{c.get('name')}' is running in Privileged mode."
@@ -66,42 +67,42 @@ class Shield:
         if hpa_doc.get('kind') != 'HorizontalPodAutoscaler':
             return issues
 
-        spec = hpa_doc.get('spec', {})
-        target_ref = spec.get('scaleTargetRef', {})
+        spec = hpa_doc.get('spec') or {}
+        target_ref = spec.get('scaleTargetRef') or {}
         target_name = target_ref.get('name')
         
         # Analyze Metrics block
-        metrics = spec.get('metrics', [])
-        
-        # Legacy support for HPA v1 (cpu only)
+        metrics = spec.get('metrics') or []
         target_cpu_util = spec.get('targetCPUUtilizationPercentage')
         resource_checks = []
         
         if target_cpu_util:
             resource_checks.append('cpu')
             
-        # Modern v2 metrics support
         for m in metrics:
             if m.get('type') == 'Resource':
-                res_name = m.get('resource', {}).get('name')
+                res_data = m.get('resource') or {}
+                res_name = res_data.get('name')
                 if res_name:
                     resource_checks.append(res_name)
         
         if not resource_checks:
             return issues
 
-        # Cross-reference with the workload bundle (the "Synapse" connection)
+        # Match target workload from the bundle
         target_workload = next((w for w in workload_docs if w.get('metadata', {}).get('name') == target_name), None)
         
         if target_workload:
-            # Handle both Pod and higher-level workloads
             kind = target_workload.get('kind')
-            pod_template = target_workload.get('spec', {}).get('template', {}) if kind != 'Pod' else target_workload
-            containers = pod_template.get('spec', {}).get('containers', [])
+            w_spec = target_workload.get('spec') or {}
+            pod_template = w_spec.get('template') or {} if kind != 'Pod' else target_workload
+            p_spec = pod_template.get('spec') or {}
+            containers = p_spec.get('containers') or []
             
             for res_to_check in set(resource_checks):
                 for c in containers:
-                    requests = c.get('resources', {}).get('requests', {})
+                    res_config = c.get('resources') or {}
+                    requests = res_config.get('requests') or {}
                     if res_to_check not in requests:
                         issues.append(
                             f"📈 [HPA LOGIC ERROR] Scales on {res_to_check}, but '{target_name}' lacks {res_to_check} requests."
