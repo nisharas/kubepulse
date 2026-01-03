@@ -1,4 +1,16 @@
-include README.md
+# Include the license and community docs
 include LICENSE
-include requirements.txt
+include CONTRIBUTING.md
+include GOVERNANCE.md
+include README.md
+
+# Include the new docs folder and all its contents
+graft docs
+
+# Include assets (Logo, etc.)
 recursive-include src/kubecuro/assets *
+
+# Exclude unnecessary files (like temp files or pyc)
+global-exclude *.py[cod]
+global-exclude __pycache__
+global-exclude .DS_Store
