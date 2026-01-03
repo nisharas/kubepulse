@@ -5,17 +5,21 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kubecuro"
 version = "1.0.0"
-description = "A 3-in-1 Heartbeat Monitor for Kubernetes Manifests"
+description = "Kubernetes Logic Diagnostics & YAML Auto-Healer"
 authors = [
     {name = "Nishar A Sunkesala", email = "fixmyk8s@protonmail.com"}
 ]
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 requires-python = ">=3.7"
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+]
 dependencies = [
     "ruamel.yaml>=0.17.0",
     "rich>=12.0.0",
-    "tabulate>=0.8.1",
 ]
 
 [project.scripts]
@@ -23,6 +27,10 @@ kubecuro = "kubecuro.main:run"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+kubecuro = ["assets/*"]
