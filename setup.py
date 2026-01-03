@@ -1,8 +1,8 @@
 """
 --------------------------------------------------------------------------------
 AUTHOR:      Nishar A Sunkesala / FixMyK8s
-PURPOSE:     Installation script for KubeCuro (Bridge for pyproject.toml).
-LICENSE:     Apache License 2.0
+PURPOSE:      Installation script for KubeCuro (Bridge for pyproject.toml).
+LICENSE:      Apache License 2.0
 --------------------------------------------------------------------------------
 """
 import os
@@ -22,7 +22,7 @@ setup(
     description="Kubernetes Logic Diagnostics & YAML Auto-Healer",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/fixmyk8s/kubecuro", # Replace with your actual URL
+    url="https://github.com/nisharas/kubecuro",
     
     # Root of the package source
     package_dir={"": "src"}, 
@@ -45,6 +45,7 @@ setup(
     include_package_data=True,
     python_requires=">=3.7",
     license="Apache-2.0",
+    keywords=["kubernetes", "k8s", "linter", "devops", "yaml", "automation"],
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: System Administrators",
@@ -53,4 +54,8 @@ setup(
         "Programming Language :: Python :: 3",
         "Topic :: Software Development :: Diagnostics",
     ],
+    project_urls={
+        "Homepage": "https://github.com/nisharas/kubecuro",
+        "Issues": "https://github.com/nisharas/kubecuro/issues",
+    },
 )
