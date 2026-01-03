@@ -48,7 +48,7 @@ A Service with a typo in its selector won't throw a Kubernetes error—it just w
 3. Healer - Enhanced auto-repair for mixed indentation and deprecated API versions.
 
 4. Zero-Dependency Portability
-Thanks to the static build process, KubeCuro is a single, 10MB binary.
+Thanks to the static build process, KubeCuro is a single, 15MB binary.
 
     * No Python required.
     * No pip install.
@@ -181,7 +181,7 @@ kubecuro --help
 
 **1. Running a Smart Scan**
 
-When you run kubecuro ./k8s-manifests/ the tool performs a multi-stage audit:
+When you run `kubecuro ./k8s-manifests/` the tool performs a multi-stage audit:
 ```text
 ❤️  KUBECURO SCAN
 Target: ./k8s-manifests/ (4 files)
@@ -207,7 +207,7 @@ Traffic will not reach the web-frontend due to a label mismatch.
 
 If a user is confused by the HPA Logic Gap, they can ask KubeCuro for the underlying logic:
 
-kubecuro explain hpa
+`kubecuro explain hpa`
 ```text
 Logic: hpa
 ────────────────────────────────────────────────────────────────────────────────
@@ -222,7 +222,7 @@ KubeCuro audits Scaling Logic:
 
 If you want to see exactly how KubeCuro would fix a broken file:
 
-kubecuro fix web-svc.yaml --dry-run
+`kubecuro fix web-svc.yaml --dry-run`
 ```text
 ❤️  KUBECURO FIX (DRY-RUN)
 
