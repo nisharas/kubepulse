@@ -13,6 +13,7 @@ from .shield import Shield
 
 class Synapse:
     def __init__(self):
+        # We use 'safe' type for analysis to prevent arbitrary code execution
         self.yaml = YAML(typ='safe', pure=True)
         self.all_docs = []       # EVERY doc encountered (For 100% API Coverage)
         self.producers = []      # Workload metadata for logic mapping
@@ -30,6 +31,7 @@ class Synapse:
             with open(file_path, 'r') as f:
                 content = f.read()
                 if not content.strip(): return # Skip empty files
+                # Load all documents in a multi-doc YAML file
                 docs = list(self.yaml.load_all(content))
             
             for doc in docs:
@@ -45,6 +47,7 @@ class Synapse:
                 spec = doc.get('spec', {})
 
                 # --- 2. Workloads (Producers) ---
+                # We track these to verify if Services actually have "targets"
                 if kind in ['Deployment', 'Pod', 'StatefulSet', 'DaemonSet']:
                     self.workload_docs.append(doc)
                     template = spec.get('template', {}) if kind != 'Pod' else doc
@@ -57,10 +60,12 @@ class Synapse:
                     volumes = pod_spec.get('volumes', [])
                     
                     for c in containers:
+                        # Extract ports for Probe/Service validation
                         for p in c.get('ports', []):
                             if p.get('containerPort'): container_ports.append(p.get('containerPort'))
                             if p.get('name'): container_ports.append(p.get('name'))
                         
+                        # Extract Health Probes
                         for p_type in ['livenessProbe', 'readinessProbe', 'startupProbe']:
                             p_data = c.get(p_type)
                             if p_data and 'httpGet' in p_data:
@@ -91,20 +96,30 @@ class Synapse:
                 elif kind == 'NetworkPolicy':
                     self.netpols.append({'name': name, 'file': fname, 'selector': spec.get('podSelector', {})})
 
-        except Exception: pass
+        except Exception: 
+            # Silent fail for unparseable YAMLs to prevent tool crash
+            pass
 
     def audit(self) -> List[AuditIssue]:
-        """Performs cross-resource analysis."""
+        """Performs deep cross-resource analysis and returns issues."""
         results = []
         shield = Shield()
 
-        # --- AUDIT: Service to Pod Matching ---
+        # --- AUDIT: Service to Pod Matching (Ghost Service Detection) ---
         for svc in self.consumers:
             if not svc['selector']: continue
+            # Find any producer in the same namespace that matches ALL selector labels
             matches = [p for p in self.producers if p['namespace'] == svc['namespace'] and all(item in p['labels'].items() for item in svc['selector'].items())]
+            
             if not matches:
-                results.append(AuditIssue("Synapse", "GHOST", "🔴 HIGH", svc['file'], 
-                    f"Service '{svc['name']}' matches 0 Pods.", "Update Service selector."))
+                results.append(AuditIssue(
+                    code="GHOST", 
+                    severity="🔴 HIGH", 
+                    file=svc['file'], 
+                    message=f"GHOST SERVICE: Service '{svc['name']}' matches 0 workload pods.", 
+                    fix="Update Service selector to match Deployment labels.",
+                    source="Synapse"
+                ))
 
         # --- AUDIT: Ingress to Service Mapping ---
         for ing in self.ingresses:
@@ -113,12 +128,19 @@ class Synapse:
                 paths = rule.get('http', {}).get('paths', [])
                 for path in paths:
                     backend = path.get('backend', {})
+                    # Support for both legacy and modern Ingress schemas
                     svc_name = backend.get('serviceName') or backend.get('service', {}).get('name')
                     if svc_name:
                         match = next((s for s in self.consumers if s['name'] == svc_name and s['namespace'] == ing['namespace']), None)
                         if not match:
-                            results.append(AuditIssue("Synapse", "INGRESS_ORPHAN", "🔴 HIGH", ing['file'], 
-                                f"Ingress references non-existent Service '{svc_name}'.", "Create the missing Service."))
+                            results.append(AuditIssue(
+                                code="INGRESS_ORPHAN", 
+                                severity="🔴 HIGH", 
+                                file=ing['file'], 
+                                message=f"Ingress references non-existent Service '{svc_name}'.", 
+                                fix="Create the missing Service or fix the backend name.",
+                                source="Synapse"
+                            ))
 
         # --- AUDIT: ConfigMap/Secret Volume Existence ---
         for p in self.producers:
@@ -130,19 +152,40 @@ class Synapse:
                 if ref_name:
                     exists = any(c['name'] == ref_name and c['namespace'] == p['namespace'] for c in self.configs)
                     if not exists:
-                        results.append(AuditIssue("Synapse", "VOL_MISSING", "🟠 MED", p['file'], 
-                            f"Workload references missing ConfigMap/Secret '{ref_name}'.", "Verify resource existence."))
+                        results.append(AuditIssue(
+                            code="VOL_MISSING", 
+                            severity="🟠 MED", 
+                            file=p['file'], 
+                            message=f"Workload '{p['name']}' references missing ConfigMap/Secret '{ref_name}'.", 
+                            fix="Verify the resource name and namespace.",
+                            source="Synapse"
+                        ))
 
-        # --- AUDIT: HPA Deep Logic ---
+        # --- AUDIT: HPA Deep Logic (Delegated to Shield) ---
         for hpa in self.hpas:
-            for err in shield.audit_hpa(hpa['doc'], self.workload_docs):
-                results.append(AuditIssue("Shield", "HPA_LOGIC", "🔴 HIGH", hpa['file'], err, "Add resource requests."))
+            hpa_errors = shield.audit_hpa(hpa['doc'], self.workload_docs)
+            for err in hpa_errors:
+                results.append(AuditIssue(
+                    code="HPA_LOGIC", 
+                    severity="🔴 HIGH", 
+                    file=hpa['file'], 
+                    message=err, 
+                    fix="Add CPU/Memory resource requests to the target Deployment.",
+                    source="Shield"
+                ))
 
         # --- AUDIT: Health Probe Gaps ---
         for p in self.producers:
             for probe in p.get('probes', []):
+                # Ensure the port used by the probe is actually defined in the container ports
                 if probe['port'] and probe['port'] not in p['ports']:
-                    results.append(AuditIssue("Synapse", "PROBE_GAP", "🟠 MED", p['file'], 
-                        f"Probe port {probe['port']} not exposed.", "Add containerPort."))
+                    results.append(AuditIssue(
+                        code="PROBE_GAP", 
+                        severity="🟠 MED", 
+                        file=p['file'], 
+                        message=f"Health probe port '{probe['port']}' is not exposed in containerPorts.", 
+                        fix="Add the port to the container's ports list.",
+                        source="Synapse"
+                    ))
 
         return results
