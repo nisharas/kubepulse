@@ -27,6 +27,7 @@ pyinstaller --onefile \
             --paths src \
             --add-data "${ASSETS_DIR}:kubecuro/assets" \
             --collect-all rich \
+	    --collect-all argcomplete \
             --collect-all ruamel.yaml \
             --hidden-import ruamel.yaml \
             --exclude-module _ruamel_yaml_clib \
