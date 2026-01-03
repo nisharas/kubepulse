@@ -41,8 +41,9 @@ def resource_path(relative_path):
         # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
-        # If not running as a binary, use the standard directory structure
-        base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+        # Now that assets are inside the package, it's just the current directory
+        base_path = os.path.dirname(__file__)
+        
 
     return os.path.join(base_path, relative_path)
 
