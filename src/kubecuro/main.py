@@ -263,6 +263,10 @@ def run():
         if warn:
             origin = doc.get('_origin_file', 'unknown')
             # Order: code, severity, file, message, fix, source
+            # OPTIONAL: Skip adding the warning if we already logged a fix for this file 
+            # and we are in 'fix' mode.
+            if command == "fix" and any(i.file == origin and i.code == "FIXED" for i in all_issues):
+                continue
             all_issues.append(AuditIssue(
                 code="API_DEPRECATED", 
                 severity="🟠 MED", 
