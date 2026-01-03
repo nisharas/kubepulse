@@ -1,13 +1,15 @@
 """
 --------------------------------------------------------------------------------
 AUTHOR:      Nishar A Sunkesala / FixMyK8s
-PURPOSE:     Main Entry Point for KubeCuro: Logic Diagnostics & Auto-Healing.
+PURPOSE:      Main Entry Point for KubeCuro: Logic Diagnostics & Auto-Healing.
 --------------------------------------------------------------------------------
 """
 import sys
 import os
 import logging
 import argparse
+import platform
+import difflib
 from typing import List
 
 # UI and Logging Imports
@@ -40,7 +42,6 @@ def resource_path(relative_path):
         base_path = sys._MEIPASS
     except Exception:
         # If not running as a binary, use the standard directory structure
-        # Moving up from src/kubecuro/ to the root
         base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 
     return os.path.join(base_path, relative_path)
@@ -68,17 +69,19 @@ KubeCuro validates the **Traffic Path**:
 2. **Port Consistency**: Validates that the `servicePort` matches a port defined in the target Service.
 3. **TLS Safety**: Checks for Secret definitions if HTTPS is configured.
     """,
-    "networkpolicy": """
-# 🛡️ NetworkPolicy Logic Audit
-KubeCuro audits **Isolation Rules**:
-1. **Targeting**: Warns if an empty `podSelector` is targeting all pods unintentionally.
-2. **Namespace Check**: Validates `namespaceSelector` labels against known namespaces.
+    "rbac": """
+# 🔑 RBAC & Security Audit
+KubeCuro audits **Access Control Logic**:
+1. **Binding Integrity**: Ensures `RoleBinding` refers to a `Role` or `ClusterRole` that exists in the bundle.
+2. **Subject Validation**: Checks if `ServiceAccount` references are valid within the namespace.
+3. **Privilege Escalation**: Flags use of wildcards (`*`) in resources or verbs.
     """,
-    "configmap": """
-# 📦 ConfigMap & Secret Logic Audit
-KubeCuro audits **Injection Logic**:
-1. **Volume Mounts**: Ensures referenced ConfigMaps/Secrets exist in the bundle.
-2. **Key Validation**: Checks `valueFrom` references to ensure keys exist in the target resource.
+    "storage": """
+# 📂 Storage & Persistent Volume Audit
+KubeCuro audits **Persistence Logic**:
+1. **PVC Match**: Ensures `PersistentVolumeClaims` requested by Pods are defined.
+2. **StorageClass Alignment**: Validates that the `storageClassName` in the PVC exists or is supported.
+3. **Access Modes**: Warns if multiple Pods use `ReadWriteOnce` on different nodes.
     """,
     "hpa": """
 # 📈 HPA Audit
@@ -86,11 +89,11 @@ KubeCuro audits **Scaling Logic**:
 1. **Target Ref**: Validates that the target Deployment/StatefulSet exists.
 2. **Resources**: Warns if scaling on CPU/Mem but containers lack `resources.requests`.
     """,
-    "statefulset": """
-# 💾 StatefulSet Persistence Audit
-KubeCuro verifies the **Identity & Storage** requirements:
-1. **Headless Service**: Ensures `serviceName` points to a Service with `clusterIP: None`.
-2. **Volume Templates**: Validates `volumeClaimTemplates` for correct storage class naming.
+    "networkpolicy": """
+# 🛡️ NetworkPolicy Logic Audit
+KubeCuro audits **Isolation Rules**:
+1. **Targeting**: Warns if an empty `podSelector` is targeting all pods unintentionally.
+2. **Namespace Check**: Validates `namespaceSelector` labels against known namespaces.
     """,
     "probes": """
 # 🩺 Health Probe Logic Audit
@@ -108,17 +111,39 @@ KubeCuro checks for **Placement Contradictions**:
 
 def show_help():
     help_console = Console()
-    logo_file = resource_path("assets/Kubecuro Logo .png")
-    help_console.print(Panel("[bold green]❤️ KubeCuro[/bold green] | Kubernetes Logic Diagnostics", expand=False))
-    help_console.print("\n[bold yellow]Usage:[/bold yellow] kubecuro [command] [target]")
+    help_console.print(Panel("[bold green]❤️ KubeCuro[/bold green] | Kubernetes Logic Diagnostics & YAML Healer", expand=False))
     
-    table = Table(show_header=False, box=None, padding=(0, 2))
-    table.add_row("  scan", "Analyze manifests for logical errors (Read-only)")
-    table.add_row("  fix", "Automatically repair syntax and API deprecations")
-    table.add_row("  explain", "Describe logic used for specific resources")
-    table.add_row("  checklist", "Show all logic rules")
+    help_console.print("\n[bold yellow]Usage:[/bold yellow]")
+    help_console.print("  kubecuro [command] [file_or_dir] [options]")
     
-    help_console.print(table)
+    help_console.print("\n[bold yellow]Main Commands:[/bold yellow]")
+    cmd_table = Table(show_header=False, box=None, padding=(0, 2))
+    cmd_table.add_row("  [bold cyan]scan[/bold cyan]", "Analyze manifests for logic errors (Read-only)")
+    cmd_table.add_row("  [bold cyan]fix[/bold cyan]", "Automatically repair syntax and API deprecations")
+    cmd_table.add_row("  [bold cyan]explain[/bold cyan]", "Describe logic used for a resource (e.g., explain hpa)")
+    cmd_table.add_row("  [bold cyan]checklist[/bold cyan]", "Show all active logic rules")
+    help_console.print(cmd_table)
+
+    help_console.print("\n[bold yellow]Options:[/bold yellow]")
+    opt_table = Table(show_header=False, box=None, padding=(0, 2))
+    opt_table.add_row("  -h, --help", "Show this help message and exit")
+    opt_table.add_row("  -v, --version", "Print version and architecture information")
+    opt_table.add_row("  --dry-run", "Show fixes without modifying files (use with 'fix')")
+    help_console.print(opt_table)
+
+    help_console.print("\n[bold yellow]Extensive Examples:[/bold yellow]")
+    help_console.print("  [dim]1. Scan a specific file for logic gaps:[/dim]")
+    help_console.print("     kubecuro scan deployment.yaml")
+    help_console.print("\n  [dim]2. Smart-Route (Automatic Scan if command is omitted):[/dim]")
+    help_console.print("     kubecuro ./manifests/")
+    help_console.print("\n  [dim]3. Automatically fix API deprecations and syntax:[/dim]")
+    help_console.print("     kubecuro fix ./prod-cluster/")
+    help_console.print("\n  [dim]4. Preview fixes without touching the YAML files:[/dim]")
+    help_console.print("     kubecuro fix service.yaml --dry-run")
+    help_console.print("\n  [dim]5. Understand why KubeCuro audits RBAC:[/dim]")
+    help_console.print("     kubecuro explain rbac")
+    
+    help_console.print("\n[italic white]Architecture: x86_64 Linux (Static Binary)[/italic white]\n")
 
 def show_checklist():
     table = Table(title="📋 KubeCuro Logic Checklist", header_style="bold magenta")
@@ -126,6 +151,7 @@ def show_checklist():
     table.add_column("Audit Logic")
     table.add_row("Service", "Selector/Workload Linkage, Port Mapping")
     table.add_row("HPA", "Resource Request Presence, Target Validity")
+    table.add_row("RBAC", "RoleBinding Integrity, Privilege Escalation")
     table.add_row("Shield", "API Version Deprecation, Security Gaps")
     table.add_row("Synapse", "Cross-resource Ingress, ConfigMap, and STS checks")
     console.print(table)
@@ -134,6 +160,7 @@ def run():
     parser = argparse.ArgumentParser(prog="kubecuro", add_help=False)
     parser.add_argument("-v", "--version", action="store_true")
     parser.add_argument("-h", "--help", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
     
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("scan").add_argument("target", nargs="?")
@@ -146,23 +173,55 @@ def run():
 
     args, unknown = parser.parse_known_args()
 
-    # 1. Handle Global Flags
-    if args.help or (not args.command and not args.version):
+    # 1. Flag-based Actions (Help/Version)
+    if args.help or (not args.command and not args.version and not unknown):
         show_help(); return
+    
     if args.version or args.command == "version":
-        console.print("[bold magenta]KubeCuro Version:[/bold magenta] 1.0.0"); return
+        arch = platform.machine()
+        os_sys = platform.system()
+        console.print(f"[bold magenta]KubeCuro Version:[/bold magenta] 1.0.0")
+        console.print(f"[bold cyan]Architecture:[/bold cyan] {arch} {os_sys} (Static Binary)")
+        return
+
     if args.command == "checklist":
         show_checklist(); return
+    
+    # Fuzzy Matching logic for 'explain'
     if args.command == "explain":
         res = args.resource.lower() if args.resource else ""
-        console.print(Panel(Markdown(EXPLAIN_CATALOG.get(res, "Resource not found.")), title=f"Logic: {res}")); return
+        if res in EXPLAIN_CATALOG:
+            console.print(Panel(Markdown(EXPLAIN_CATALOG[res]), title=f"Logic: {res}", border_style="green"))
+        else:
+            suggestions = difflib.get_close_matches(res, EXPLAIN_CATALOG.keys(), n=1, cutoff=0.6)
+            error_msg = f"Resource [bold red]'{res}'[/bold red] not found."
+            if suggestions:
+                error_msg += f"\n\nDid you mean: [bold cyan]{suggestions[0]}[/bold cyan]?"
+            
+            valid_keys = ", ".join([f"[bold cyan]{k}[/bold cyan]" for k in EXPLAIN_CATALOG.keys()])
+            console.print(Panel(f"{error_msg}\n\n[bold white]Available:[/bold white] {valid_keys}", title="Logic Catalog"))
+        return
 
-    # 2. Identify Target Path
-    target = getattr(args, 'target', None) or (unknown[0] if unknown else None)
-    if not target or not os.path.exists(target):
-        log.error("[bold red]Error:[/bold red] Valid target path (file or directory) required."); sys.exit(1)
+    # 2. Smart Command Routing Logic
+    # Handles: 'kubecuro scan path', 'kubecuro fix path', or just 'kubecuro path' (Defaults to scan)
+    command = args.command
+    target = getattr(args, 'target', None)
+    
+    if not command and unknown:
+        # Check if the unknown arg is a valid file/dir
+        if os.path.exists(unknown[0]):
+            command = "scan"
+            target = unknown[0]
+        else:
+            console.print(f"[bold red]Error:[/bold red] Unrecognized command or invalid path: '{unknown[0]}'")
+            show_help(); sys.exit(1)
+    
+    if not target:
+        console.print("[bold red]Error:[/bold red] A valid file or directory target is required.")
+        show_help(); sys.exit(1)
 
-    console.print(Panel(f"❤️ [bold white]KubeCuro {args.command.upper()}[/bold white]", style="bold magenta"))
+    # 3. Execution Pipeline
+    console.print(Panel(f"❤️ [bold white]KubeCuro {command.upper()}[/bold white]", style="bold magenta"))
     
     syn = Synapse()
     shield = Shield()
@@ -170,38 +229,36 @@ def run():
     
     files = [os.path.join(target, f) for f in os.listdir(target) if f.endswith(('.yaml', '.yml'))] if os.path.isdir(target) else [target]
 
-    # 3. Execution Phase
     with console.status(f"[bold green]Processing {len(files)} files...") as status:
         for f in files:
             fname = os.path.basename(f)
             
-            # --- PHASE A: HEALER (Direct Modification) ---
-            if args.command == "fix":
-                if linter_engine(f):
-                    all_issues.append(AuditIssue("Healer", "FIXED", "🟢 FIXED", fname, "Repaired YAML Syntax and migrated API versions.", "None"))
+            # --- PHASE A: HEALER ---
+            if command == "fix":
+                if args.dry_run:
+                    console.print(f"[yellow][DRY-RUN][/yellow] Would analyze and repair: {fname}")
+                else:
+                    if linter_engine(f):
+                        all_issues.append(AuditIssue("Healer", "FIXED", "🟢 FIXED", fname, "Repaired YAML Syntax and migrated API versions.", "None"))
             
-            # --- PHASE B: SYNAPSE (Build Logic Map) ---
+            # --- PHASE B: SYNAPSE (Build Relationship Map) ---
             syn.scan_file(f)
 
-    # --- PHASE C: SHIELD (Static API Security Audit) ---
-    # We audit all workloads extracted by Synapse for deprecations
+    # --- PHASE C: SHIELD (API Audit) ---
     for doc in syn.all_docs:
         warn = shield.check_version(doc)
         if warn:
-            # Attribution using the Synapse origin tag
-            origin_file = doc.get('_origin_file', 'unknown')
-            all_issues.append(AuditIssue("Shield", "API", "🟠 MED", origin_file, warn, "Update API version"))
+            origin = doc.get('_origin_file', 'unknown')
+            all_issues.append(AuditIssue("Shield", "API", "🟠 MED", origin, warn, "Update API version"))
 
-    # --- PHASE D: SYNAPSE (Relationship & Logic Audit) ---
+    # --- PHASE D: SYNAPSE (Cross-Resource Logic Audit) ---
     all_issues.extend(syn.audit())
 
-    # 4. Output Results Table
-    # --- 4. OUTPUT RESULTS ---
+    # 4. Professional Reporting Table
     if not all_issues:
         console.print("\n[bold green]✔ No issues found. Your manifests are logically sound![/bold green]")
     else:
-        # Create Table
-        res_table = Table(title="\n📊 Diagnostic Report", header_style="bold cyan", box=None, padding=(0, 1))
+        res_table = Table(title="\n📊 Diagnostic Report", header_style="bold cyan", box=None)
         res_table.add_column("Severity", justify="left")
         res_table.add_column("File", style="dim")
         res_table.add_column("Message", soft_wrap=True)
@@ -209,26 +266,26 @@ def run():
         for i in all_issues:
             color = "red" if "🔴" in i.severity else "orange3" if "🟠" in i.severity else "green"
             res_table.add_row(f"[{color}]{i.severity}[/{color}]", i.file, i.message)
-            
         console.print(res_table)
 
-        # --- NEW: SUMMARY SECTION ---
+        # Audit Summary Logic
         ghost_count = sum(1 for i in all_issues if i.code == "GHOST")
         hpa_count = sum(1 for i in all_issues if i.code == "HPA_LOGIC")
         fix_count = sum(1 for i in all_issues if i.code == "FIXED")
         
         summary_md = f"""
 ### 📈 Audit Summary
-* **Ghost Services:** {ghost_count} (Services with no matching Pods)
-* **HPA Logic Gaps:** {hpa_count} (Scaling risks)
+* **Ghost Services:** {ghost_count} (Services with no pods)
+* **HPA Logic Gaps:** {hpa_count} (Missing requests)
 * **Auto-Repairs:** {fix_count} (Files syntax-healed)
         """
         
-        # Determine overall health status
+        # Color summary based on health
         status_color = "red" if (ghost_count + hpa_count) > 0 else "green"
         console.print(Panel(Markdown(summary_md), title="Summary & Impact", border_style=status_color))
 
-        if args.command == "scan":
-            console.print(f"\n[bold yellow]TIP:[/bold yellow] Found {len(all_issues)} issues. Run [bold cyan]kubecuro fix {target}[/bold cyan] to auto-repair syntax.")
+        if command == "scan" and not args.dry_run:
+            console.print(f"\n[bold yellow]TIP:[/bold yellow] Run [bold cyan]kubecuro fix {target}[/bold cyan] to auto-repair issues.")
+
 if __name__ == "__main__":
     run()
