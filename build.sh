@@ -1,6 +1,15 @@
 #!/bin/bash
 set -e
 
+# --- PRE-FLIGHT CHECK ---
+ASSETS_DIR="$(pwd)/src/kubecuro/assets"
+if [ ! -d "$ASSETS_DIR" ]; then
+    echo "❌ Error: Assets directory not found at $ASSETS_DIR"
+    echo "Current directory contents:"
+    ls -R src/kubecuro/
+    exit 1
+fi
+
 echo "🧹 1. Deep cleaning workspace..."
 rm -rf build/ dist/ *.spec *.egg-info
 # Clear PyInstaller's internal cache
@@ -16,7 +25,7 @@ pyinstaller --onefile \
             --clean \
             --name kubecuro_dynamic \
             --paths src \
-            --add-data "$(pwd)/src/kubecuro/assets:kubecuro/assets" \
+            --add-data "${ASSETS_DIR}:kubecuro/assets" \
             --collect-all rich \
             --collect-all ruamel.yaml \
             --hidden-import ruamel.yaml \
