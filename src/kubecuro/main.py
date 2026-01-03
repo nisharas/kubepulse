@@ -237,21 +237,22 @@ def run():
     with console.status(f"[bold green]Processing {len(files)} files...") as status:
         for f in files:
             fname = os.path.basename(f)
-            
+    
             # --- PHASE A: HEALER ---
             if command == "fix":
-                if args.dry_run:
-                    console.print(f"[yellow][DRY-RUN][/yellow] Would analyze and repair: {fname}")
-                else:
-                    if linter_engine(f):
-                        all_issues.append(AuditIssue(
-                            code="FIXED", 
-                            severity="🟢 FIXED", 
-                            file=fname, 
-                            message="Repaired YAML Syntax and migrated API versions.", 
-                            fix="None", 
-                            source="Healer"
-                        ))
+                # Capture the boolean result (True if changes were made/detected)
+                was_fixed = linter_engine(f, dry_run=args.dry_run)
+                
+                if was_fixed:
+                    status_text = "🟢 FIXED" if not args.dry_run else "🟡 WOULD FIX"
+                    all_issues.append(AuditIssue(
+                        code="FIXED", 
+                        severity=status_text, 
+                        file=fname, 
+                        message="Repaired YAML Syntax and migrated API versions.", 
+                        fix="None" if not args.dry_run else "Run without --dry-run to apply", 
+                        source="Healer"
+                    ))
             
             # --- PHASE B: SYNAPSE (Build Relationship Map) ---
             syn.scan_file(f)
