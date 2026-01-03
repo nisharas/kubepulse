@@ -1,14 +1,14 @@
 """
 --------------------------------------------------------------------------------
 AUTHOR:          Nishar A Sunkesala / FixMyK8s
-PURPOSE:          The Shield Engine: API Deprecation & Resource Stability Guard.
+PURPOSE:         The Shield Engine: API Deprecation & Resource Stability Guard.
 --------------------------------------------------------------------------------
 """
 
 class Shield:
     """The Stability Engine: Protects against outdated APIs and misconfigured HPA logic."""
     
-    # Comprehensive Database of retired/deprecated APIs (Expanded)
+    # Comprehensive Database of retired/deprecated APIs
     DEPRECATIONS = {
         "extensions/v1beta1": {
             "Ingress": "networking.k8s.io/v1",
@@ -46,6 +46,15 @@ class Shield:
             better = mapping.get(kind, mapping.get("default")) if isinstance(mapping, dict) else mapping
             return f"🛡️ [DEPRECATED API] {kind} uses '{api}'. Upgrade to '{better}'."
         
+        # --- NEW: Production Security Check ---
+        # Flags privileged containers which are a major security risk
+        if kind in ['Deployment', 'Pod', 'StatefulSet', 'DaemonSet']:
+            template = doc.get('spec', {}).get('template', {}) if kind != 'Pod' else doc
+            containers = template.get('spec', {}).get('containers', [])
+            for c in containers:
+                if c.get('securityContext', {}).get('privileged'):
+                    return f"🚨 [SECURITY RISK] Container '{c.get('name')}' is running in Privileged mode."
+
         return None
 
     def audit_hpa(self, hpa_doc: dict, workload_docs: list) -> list:
@@ -81,11 +90,13 @@ class Shield:
         if not resource_checks:
             return issues
 
-        # Cross-reference with the workload bundle
+        # Cross-reference with the workload bundle (the "Synapse" connection)
         target_workload = next((w for w in workload_docs if w.get('metadata', {}).get('name') == target_name), None)
         
         if target_workload:
-            pod_template = target_workload.get('spec', {}).get('template', {})
+            # Handle both Pod and higher-level workloads
+            kind = target_workload.get('kind')
+            pod_template = target_workload.get('spec', {}).get('template', {}) if kind != 'Pod' else target_workload
             containers = pod_template.get('spec', {}).get('containers', [])
             
             for res_to_check in set(resource_checks):
@@ -93,7 +104,7 @@ class Shield:
                     requests = c.get('resources', {}).get('requests', {})
                     if res_to_check not in requests:
                         issues.append(
-                            f"📈 [HPA LOGIC ERROR] Scales on {res_to_check}, but '{target_name}' container '{c.get('name')}' lacks {res_to_check} requests."
+                            f"📈 [HPA LOGIC ERROR] Scales on {res_to_check}, but '{target_name}' lacks {res_to_check} requests."
                         )
         
         return issues
