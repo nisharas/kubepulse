@@ -1,4 +1,4 @@
-## KubeCuro
+## ❤️ KubeCuro
 
 [![Kubernetes](https://img.shields.io/badge/kubernetes-%23326ce5.svg?style=flat&logo=kubernetes&logoColor=white)](https://kubernetes.io)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
@@ -6,51 +6,23 @@
 
 <img src="https://github.com/nisharas/kubecuro/blob/main/assets/KubeCuro%20Logo%20.png?raw=true" width="300">
 
-**KubeCuro** is a high-performance, production-grade CLI tool designed to eliminate the "silent killers" of Kubernetes deployments. While standard linters merely validate YAML syntax, KubeCuro performs a deep-tissue scan to ensure your infrastructure is **Syntactically Healthy**, **Logically Connected**, and **API Future-Proof**.
+**KubeCuro** is a high-performance, production-grade CLI tool designed to eliminate the "silent killers" of Kubernetes deployments.
 
-**KubeCuro** isn't just another linter; it's a "Kubernetes Sanitizer." While most tools focus on schema validation, KubeCuro focuses on the functional integrity of your entire manifest suite. It bridges the gap between writing YAML and successfully running it.
-
----
+## 🎯 Our Mission
+**To ensure that every Kubernetes manifest is not just syntactically correct, but logically sound and production-ready.** We believe that YAML validation should go beyond "Is it valid?" and answer "Will it work?"
 
 ## 📄 Project Metadata
-
-* **Author:** Nishar A Sunkesala / [FixMyK8s](https://github.com/nisharas)
-* **Version:** 1.0.0
-* **Status:** Stable / Production Ready
-* **Repository:** [https://github.com/nisharas/kubecuro](https://github.com/nisharas/kubecuro)
+**Author:** Nishar A Sunkesala / FixMyK8s  
+**Version:** 1.0.0  
+**Status:** Stable / Production Ready  
 
 ---
 
-## 🎯 The Gap & The Solution
+## 🔍 The Gap & The Solution
 
-**The Gap:** Current CI/CD pipelines use "Validators" that only check if a YAML file is technically valid. They fail to detect if a Service will actually reach its Pod (due to label/namespace mismatches) or if an API version is deprecated.
+**The Gap:** Current CI/CD pipelines use "Validators" that only check if a YAML file is technically valid. They fail to detect if a Service will actually reach its Pod (due to label mismatches) or if an API version is deprecated.
 
-**The Solution:** KubeCuro closes this feedback loop. It analyzes the **relationships** between files, detecting logical orphans and connection gaps *before* they reach your control plane.
-
----
-
-## 🛠️ The Three Pillars of KubeCuro
-| Engine | Purpose | Real-World Value |
-| --- | --- | --- |
-| 🩺 Healer | Auto-Fixing | Stops "Death by Indentation." Automatically repairs syntax and formatting issues, showing a clear diff of changes. |
-| 🧠 Synapse | Logic Audit | Detects "Ghost Services." Ensures that Selectors, Labels, and Ports actually align across different files. |
-| 🛡️ Shield | Security & Versioning | Prevents "API Rot." Flags deprecated API versions and insecure configurations before they hit your cluster. |
-
----
-
-## 🚀 Why use KubeCuro?
-1. Reduce "Developer Friction"
-Instead of a CI/CD pipeline failing with a cryptic "Invalid YAML" error, KubeCuro tells the developer exactly what happened and, in many cases, fixes it for them. This reduces the back-and-forth between Dev and Ops.
-
-2. Prevent Silent Failures
-A Service with a typo in its selector won't throw a Kubernetes error—it just won't send traffic to your Pods. These "silent failures" are the hardest to debug. Synapse catches these instantly.
-
-3. Zero-Dependency Portability
-Thanks to the static build process, KubeCuro is a single, 10MB binary.
-
-    * No Python required.
-    * No pip install.
-    * Just chmod +x and run. This makes it perfect for Scratch-based Docker images or restricted CI runners.
+**The Solution:** KubeCuro closes this feedback loop. It analyzes the **relationships** between files, detecting logical orphans and connection gaps before they reach your control plane.
 
 ---
 ## ⚖️ Why KubeCuro? (The Logic Gap)
@@ -65,28 +37,50 @@ Most tools only check if the "grammar" of your YAML is correct. KubeCuro checks 
 | Cross-File Logic (Synapse) | ❌ | ✅ |
 | Service-to-Pod Mapping | ❌ | ✅ | 
 | Port Alignment Audit | ❌ | ✅ |
----
 
+## 🚀 Why use KubeCuro?
+1. Reduce "Developer Friction" - 
+Instead of a CI/CD pipeline failing with a cryptic "Invalid YAML" error, KubeCuro tells the developer exactly what happened and, in many cases, fixes it for them. This reduces the back-and-forth between Dev and Ops.
+
+2. Prevent Silent Failures -
+A Service with a typo in its selector won't throw a Kubernetes error—it just won't send traffic to your Pods. These "silent failures" are the hardest to debug. Synapse catches these instantly.
+
+3. Healer - Enhanced auto-repair for mixed indentation and deprecated API versions.
+
+4. Zero-Dependency Portability
+Thanks to the static build process, KubeCuro is a single, 10MB binary.
+
+    * No Python required.
+    * No pip install.
+    * Just chmod +x and run. This makes it perfect for Scratch-based Docker images or restricted CI runners.
+      
+5. Smart Tab-Completion: Full support for Bash and Zsh with an automated installer.
+
+6. Explain Engine: Direct access to K8s logic best practices via kubecuro explain.
+## 🛠️ The Three Pillars of KubeCuro
+| Engine | Purpose | Real-World Value |
+| --- | --- | --- |
+| 🩺 Healer | Auto-Fixing | Stops "Death by Indentation." Automatically repairs syntax and formatting issues, showing a clear diff of changes. |
+| 🧠 Synapse | Logic Audit | Detects "Ghost Services." Ensures that Selectors, Labels, and Ports actually align across different files. |
+| 🛡️ Shield | Security & Versioning | Prevents "API Rot." Flags deprecated API versions and insecure configurations before they hit your cluster. |
+
+---
+## 🧠 Diagnostic Intelligence
+
+KubeCuro categorizes issues based on their impact on cluster stability:
+
+- 🔴 GHOST (Critical): Service exists, but its selector matches zero Pods. Traffic will be dropped.
+- 🔴 PORT (Critical): Service targetPort does not match any containerPort in the targeted Pods.
+- 🟠 NAMESPACE (Warning): Matches found, but resources are isolated in different namespaces.
+- 🟡 API (Warning): Using deprecated API versions (e.g., extensions/v1beta1) that will fail on upgrade.
+  
 ## 🛡️ Security & Privacy Audit
 
 KubeCuro is designed with a "Security-First" architecture, operating as a localized static analysis tool.
 
-* **Zero Data Leakage:** Runs entirely on your local machine. No external network requests or data collection.
-* **Air-Gapped by Design:** Does not communicate with the Kubernetes API Server. No `kubeconfig` or credentials required.
-* **No Privilege Escalation:** Operates with the same permissions as the local user.
-* **Safe Parsing:** Uses `ruamel.yaml` to prevent malicious code injection within YAML manifests.
-
----
-
-## 🩺 Diagnostic Intelligence
-
-KubeCuro categorizes issues based on their impact on cluster stability:
-
-- GHOST (Critical): Service exists, but its selector matches zero Pods. Traffic will be dropped.
-- PORT (Critical): Service targetPort does not match any containerPort in the targeted Pods.
-- NAMESPACE (Warning): Matches found, but resources are isolated in different namespaces.
-- API (Warning): Using deprecated API versions (e.g., extensions/v1beta1) that will fail on upgrade.
-
+* **Zero Data Leakage:** Runs entirely locally. No external network requests.
+* **Air-Gapped by Design:** Does not need a connection to the K8s API server.
+* **Read-Only by Default:** The scan command never modifies your files.
 ---
 ## ⚖️ Design Philosophy: The "Safe" CNCF Approach
 KubeCuro is built on the principle of Predictable Automation. We distinguish between structural repair and logical intent to ensure your manifests remain under your total control.
@@ -98,45 +92,6 @@ KubeCuro is built on the principle of Predictable Automation. We distinguish bet
 Why? In production Kubernetes environments, auto-fixing a label could accidentally route traffic to the wrong database. KubeCuro fixes the format but respects your intent.
 
 ---
-## 📊 Sample Report
-
-When you run kubecuro, it generates a high-fidelity diagnostic report. Below is an example of a scan detecting a GHOST service (label mismatch) and a deprecated API.
-```text
-KubeCuro: Kubernetes Logic Diagnostics
-────────────────────────────────────────────────────────────────────────────────
-
-🩺 [DIAGNOSTIC REPORT] File: web-service.yaml
-============================================================
--  selector:
--      app: web-server    <-- (Error: Mixed tabs/spaces)
-+  selector:
-+    app: web-server      <-- (Healed: Standard 2-space indent)
-============================================================
-SUCCESS: Configuration file 'web-service.yaml' has been healed.
-
-📊 Diagnostic Summary
-┌──────────┬─────────┬──────────┬──────────────────────────────────────────────┐
-│ File     │ Engine  │ Severity │ Issue Description                            │
-├──────────┼─────────┼──────────┼──────────────────────────────────────────────┤
-│ svc.yaml │ Healer  │ 🟡 LOW   │ Auto-healed YAML formatting                  │
-│ svc.yaml │ Synapse │ 🔴 HIGH  │ Service 'web-svc' targets labels {'app':     │
-│          │         │          │ 'nginx'} but matches 0 Pods.                 │
-│ ing.yaml │ Shield  │ 🟠 MED   │ 🛡️ [DEPRECATED API] Ingress uses             │
-│          │         │          │ 'extensions/v1beta1'. Retired in 1.22+       │
-└──────────┴─────────┴──────────┴──────────────────────────────────────────────┘
-
-💡 FIXMYK8S REMEDIATION GUIDE:
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Fix for svc.yaml                                                             ┃
-┃ GHOST: Check labels in Deployment/Pod or update Service selector in svc.yaml.┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Fix for ing.yaml                                                             ┃
-┃ API: Update apiVersion to 'networking.k8s.io/v1' for Ingress objects.        ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-
-✔ Diagnosis Complete. Powered by FixMyK8s.
-```
 ## 🖥️ Compatibility & Requirements
 
 KubeCuro is distributed as a **fully static Linux binary**. 
@@ -175,37 +130,126 @@ pip install -e .
 
 ```
 
-## 💻 Usage
-
-**Scan a Single File**
-```bash
-kubecuro pod.yaml
-
-```
-
-**Scan an Entire Directory**
-Cross-references all manifests within the folder to find logical gaps.
+### Enable Smart Autocomplete (Zsh/Bash)
+To make your workflow faster with tab-completions, you need to download and run the automated installer script.
 
 ```bash
-kubecuro ./k8s-manifests/
+# 1. Download the installer script from the repository
+curl -L -O https://raw.githubusercontent.com/nisharas/kubecuro/main/install-completions.sh
 
-```
+# 2. Run the automated installer
+chmod +x install-completions.sh
+./install-completions.sh
 
-**Get Help**
-
-```bash
-kubecuro --help
-
+# 3. Apply changes to your current session
+source ~/.bashrc  # if using Bash
+source ~/.zshrc   # if using Zsh
 ```
 
 ---
+## 💻 Usage
 
+**1. Smart Scan**
+Scan a file or a whole directory. KubeCuro automatically detects if you want a scan.
+```bash
+kubecuro ./manifests/
+
+```
+
+**2. Auto-Heal (Fix)**
+Repair syntax errors and migrate old API versions instantly.
+
+```bash
+kubecuro fix deployment.yaml --dry-run  # Preview changes
+kubecuro fix deployment.yaml            # Apply changes
+```
+
+**3. Logic Encyclopedia**
+Don't just fix it—understand why. Use `explain` to see the logic KubeCuro uses.
+*Tip: Hit [TAB] after typing 'explain' to see all available resources!*
+```bash
+kubecuro explain hpa
+kubecuro explain rbac
+```
+**4. Get Help**
+
+```bash
+kubecuro --help
+```
+---
+## 📊 Sample Output
+
+**1. Running a Smart Scan**
+
+When you run kubecuro ./k8s-manifests/ the tool performs a multi-stage audit:
+```text
+❤️  KUBECURO SCAN
+Target: ./k8s-manifests/ (4 files)
+
+📊 Diagnostic Report
+Severity   File             Message
+🟢 FIXED    web-svc.yaml     Repaired YAML syntax and migrated API versions.
+🔴 HIGH     web-svc.yaml     Service 'web-frontend' targets labels {'app': 'nginx'} but matches 0 Pods.
+🟠 MED      ingress.yaml     🛡️ [API_DEPRECATED] Ingress uses 'extensions/v1beta1'. Retired in 1.22+.
+🔴 HIGH     backend-hpa.yaml 📈 [Synapse] HPA targets 'api-server' but containers lack resources.requests.
+
+📈 Audit Summary
+* Ghost Services: 1 (Services with no pods)
+* HPA Logic Gaps: 1 (Missing requests)
+* API Warnings:   1 (Outdated versions)
+* Auto-Repairs:   1 (Files syntax-healed)
+
+Summary & Impact (CRITICAL)
+Your manifests are technically valid but LOGICALLY BROKEN. 
+Traffic will not reach the web-frontend due to a label mismatch.
+```
+**2. Using the Explain Engine**
+
+If a user is confused by the HPA Logic Gap, they can ask KubeCuro for the underlying logic:
+
+kubecuro explain hpa
+```text
+Logic: hpa
+────────────────────────────────────────────────────────────────────────────────
+# 📈 HPA Audit
+KubeCuro audits Scaling Logic:
+1. Target Ref: Validates that the target Deployment/StatefulSet exists.
+2. Resources: Warns if scaling on CPU/Mem but containers lack resources.requests.
+   Reason: HPA cannot calculate percentage-based scaling without a baseline request.
+────────────────────────────────────────────────────────────────────────────────
+```
+**3. The "Healer" in Action (Dry Run)**
+
+If you want to see exactly how KubeCuro would fix a broken file:
+
+kubecuro fix web-svc.yaml --dry-run
+```text
+❤️  KUBECURO FIX (DRY-RUN)
+
+--- web-svc.yaml (Original)
++++ web-svc.yaml (Healed)
+@@ -1,6 +1,6 @@
+-apiVersion: v1beta1
+-kind: Service
++apiVersion: v1
++kind: Service
+ metadata:
+   name: web-frontend
+ spec:
+-  selector: 
+-      app: nginx    <-- [Fixed Indentation]
++  selector:
++    app: nginx
+
+🟢 WOULD FIX: Repaired YAML Syntax and migrated API versions.
+Run without --dry-run to apply these changes.
+```
 ## 📈 Roadmap to v1.1.0
 To further increase the value, we are looking at:
    
   * --json output: For easy integration with monitoring dashboards.
   * Helm Support: Directly scanning Helm templates before rendering.
-  * GitHub Action: A first-party action to "Cure" your PRs automatically.
+  * GitHub Action: Official KubeCuro action for PR "Logic Gates."
 
 ---
 
