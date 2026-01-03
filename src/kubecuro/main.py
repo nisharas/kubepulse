@@ -159,6 +159,13 @@ def show_checklist():
     console.print(table)
 
 def run():
+    # --- ASSET INTEGRITY CHECK ---
+    # Verify critical assets are readable before starting the logic engine
+    logo_path = resource_path("assets/Kubecuro Logo.png")
+    if not os.path.exists(logo_path):
+        # We don't crash, but we log a warning for debugging the binary
+        log.debug(f"⚠️ UI Asset missing at {logo_path}")
+    
     parser = argparse.ArgumentParser(prog="kubecuro", add_help=False)
     parser.add_argument("-v", "--version", action="store_true")
     parser.add_argument("-h", "--help", action="store_true")
