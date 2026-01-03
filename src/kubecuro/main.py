@@ -39,7 +39,8 @@ def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     try:
         # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
+        # We append 'kubecuro' to match the --add-data destination in build.sh
+        base_path = os.path.join(sys._MEIPASS, "kubecuro")
     except Exception:
         # Now that assets are inside the package, it's just the current directory
         base_path = os.path.dirname(__file__)
