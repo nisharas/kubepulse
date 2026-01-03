@@ -134,7 +134,6 @@ def show_help():
         title="[bold magenta]❤️ KubeCuro[/bold magenta] | Kubernetes Logic Diagnostics & YAML Healer",
         subtitle="[italic white]v1.0.0[/italic white]",
         border_style="bright_black",
-        expand=False
         expand=False,
         padding=(0, 2) # Reduced vertical padding
     ))
