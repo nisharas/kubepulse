@@ -44,24 +44,24 @@ class Synapse:
                 kind = doc['kind']
                 name = doc.get('metadata', {}).get('name', 'unknown')
                 ns = doc.get('metadata', {}).get('namespace', 'default')
-                spec = doc.get('spec', {})
+                spec = doc.get('spec', {}) or {}
 
                 # --- 2. Workloads (Producers) ---
-                # We track these to verify if Services actually have "targets"
                 if kind in ['Deployment', 'Pod', 'StatefulSet', 'DaemonSet']:
                     self.workload_docs.append(doc)
                     template = spec.get('template', {}) if kind != 'Pod' else doc
-                    labels = template.get('metadata', {}).get('labels', {})
+                    # Safety guard: Ensure labels is always a dict
+                    labels = template.get('metadata', {}).get('labels') or {}
                     pod_spec = template.get('spec', {}) if kind != 'Pod' else spec
-                    containers = pod_spec.get('containers', [])
+                    containers = pod_spec.get('containers') or []
                     
                     container_ports = []
                     probes = []
-                    volumes = pod_spec.get('volumes', [])
+                    volumes = pod_spec.get('volumes') or []
                     
                     for c in containers:
                         # Extract ports for Probe/Service validation
-                        for p in c.get('ports', []):
+                        for p in c.get('ports') or []:
                             if p.get('containerPort'): container_ports.append(p.get('containerPort'))
                             if p.get('name'): container_ports.append(p.get('name'))
                         
@@ -81,8 +81,8 @@ class Synapse:
                 elif kind == 'Service':
                     self.consumers.append({
                         'name': name, 'namespace': ns, 'file': fname,
-                        'selector': spec.get('selector', {}),
-                        'ports': spec.get('ports', []),
+                        'selector': spec.get('selector') or {},
+                        'ports': spec.get('ports') or [],
                         'clusterIP': spec.get('clusterIP')
                     })
 
@@ -94,7 +94,7 @@ class Synapse:
                 elif kind in ['ConfigMap', 'Secret']:
                     self.configs.append({'name': name, 'kind': kind, 'namespace': ns, 'file': fname})
                 elif kind == 'NetworkPolicy':
-                    self.netpols.append({'name': name, 'file': fname, 'selector': spec.get('podSelector', {})})
+                    self.netpols.append({'name': name, 'file': fname, 'selector': spec.get('podSelector') or {}})
 
         except Exception: 
             # Silent fail for unparseable YAMLs to prevent tool crash
@@ -108,8 +108,13 @@ class Synapse:
         # --- AUDIT: Service to Pod Matching (Ghost Service Detection) ---
         for svc in self.consumers:
             if not svc['selector']: continue
-            # Find any producer in the same namespace that matches ALL selector labels
-            matches = [p for p in self.producers if p['namespace'] == svc['namespace'] and all(item in p['labels'].items() for item in svc['selector'].items())]
+            
+            # Logic: All Service selector labels must exist in the Workload labels
+            matches = [
+                p for p in self.producers 
+                if p['namespace'] == svc['namespace'] and 
+                svc['selector'].items() <= p['labels'].items()
+            ]
             
             if not matches:
                 results.append(AuditIssue(
@@ -123,12 +128,11 @@ class Synapse:
 
         # --- AUDIT: Ingress to Service Mapping ---
         for ing in self.ingresses:
-            rules = ing['spec'].get('rules', [])
+            rules = ing['spec'].get('rules') or []
             for rule in rules:
-                paths = rule.get('http', {}).get('paths', [])
+                paths = rule.get('http', {}).get('paths') or []
                 for path in paths:
                     backend = path.get('backend', {})
-                    # Support for both legacy and modern Ingress schemas
                     svc_name = backend.get('serviceName') or backend.get('service', {}).get('name')
                     if svc_name:
                         match = next((s for s in self.consumers if s['name'] == svc_name and s['namespace'] == ing['namespace']), None)
@@ -144,7 +148,7 @@ class Synapse:
 
         # --- AUDIT: ConfigMap/Secret Volume Existence ---
         for p in self.producers:
-            for vol in p.get('volumes', []):
+            for vol in p.get('volumes') or []:
                 ref_name = None
                 if 'configMap' in vol: ref_name = vol['configMap'].get('name')
                 if 'secret' in vol: ref_name = vol['secret'].get('secretName')
@@ -176,8 +180,7 @@ class Synapse:
 
         # --- AUDIT: Health Probe Gaps ---
         for p in self.producers:
-            for probe in p.get('probes', []):
-                # Ensure the port used by the probe is actually defined in the container ports
+            for probe in p.get('probes') or []:
                 if probe['port'] and probe['port'] not in p['ports']:
                     results.append(AuditIssue(
                         code="PROBE_GAP", 
