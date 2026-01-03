@@ -270,7 +270,7 @@ If you find this tool helpful, you can support my work by buying me a coffee. Ev
 | :---: | :--- |
 | <img src="src/kubecuro/assets/bmc-qr.png" width="150"> | [Buy Me a Coffee](https://www.buymeacoffee.com/fixmyk8s) |
 
-* Governance: See [MAINTAINERS.md](https://github.com/nisharas/kubecuro/blob/main/MAINTAINERS.md) and [ADOPTERS.md](https://github.com/nisharas/kubecuro/blob/main/ADOPTERS.md).
+
 * **Have a feature idea?** Email me at **fixmyk8s@protonmail.com**
 
 ### 🚀 Corporate Sponsorship
