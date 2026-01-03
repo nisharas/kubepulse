@@ -135,6 +135,8 @@ def show_help():
         subtitle="[italic white]v1.0.0[/italic white]",
         border_style="bright_black",
         expand=False
+        expand=False,
+        padding=(0, 2) # Reduced vertical padding
     ))
     
     help_console.print("\n[bold yellow]Usage:[/bold yellow]")
