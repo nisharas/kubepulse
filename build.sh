@@ -16,7 +16,7 @@ pyinstaller --onefile \
             --clean \
             --name kubecuro_dynamic \
             --paths src \
-            --add-data "src/kubecuro/assets:kubecuro/assets" \
+            --add-data "$(pwd)/src/kubecuro/assets:kubecuro/assets" \
             --collect-all rich \
             --collect-all ruamel.yaml \
             --hidden-import ruamel.yaml \
