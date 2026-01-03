@@ -1,3 +1,11 @@
-ruamel.yaml>=0.17.0
-rich>=12.0.0
-tabulate>=0.8.0
+# UI and Terminal Formatting
+rich>=13.0.0
+
+# Advanced YAML Engine (Required for Healer's Round-Trip 'rt' mode)
+ruamel.yaml>=0.17.21
+
+# Compatibility and Path handling
+typing-extensions>=4.0.0; python_version < "3.10"
+
+# Build Tools (If you plan to create the binary)
+pyinstaller>=6.0.0
