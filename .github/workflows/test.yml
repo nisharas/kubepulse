@@ -24,5 +24,11 @@ jobs:
           pip install pytest
 
       - name: Run Logic Tests
+        run: |
+          # This line will tell us EXACTLY what version is running and WHERE it is located
+          python -m pip show rich
+          python -m pytest tests/
+
+      - name: Run Logic Tests
         # We use 'python -m pytest' to be safe
         run: python -m pytest tests/
