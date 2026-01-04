@@ -34,54 +34,85 @@ class Shield:
     }
 
     def get_line(self, doc, key=None):
-        """
-        Helper to extract the line number from a ruamel.yaml-parsed dict.
-        'key' can be a specific field (e.g., 'spec') to get that field's line.
-        """
+        """Helper to extract line number from ruamel.yaml-parsed dict."""
         try:
             if not hasattr(doc, 'lc'):
-                return 0
-            
+                return 1
             if key and key in doc.lc.data:
-                # Returns the line number for the specific key
+                # Target specific key (e.g., 'apiVersion' or 'spec')
                 return doc.lc.data[key][0] + 1
-            
-            # Returns the starting line of the document
+            # Fallback to starting line of the document
             return doc.lc.line + 1
         except Exception:
-            return 0
+            return 1
 
     def scan(self, doc: dict, all_docs: list = None) -> list:
-        """
-        The main entry point for the Shield Engine. 
-        Runs all security and stability checks against a document.
-        """
+        """Main entry point: Runs security, stability, and networking checks."""
         findings = []
         if not doc or not isinstance(doc, dict):
             return findings
 
-        # Capture the base line number for the resource (e.g., where 'apiVersion' starts)
         base_line = self.get_line(doc)
+        raw_findings = []
 
         # 1. API Version & Pod Security Checks
-        # Pass the line number into the check methods
-        raw_findings = []
         raw_findings.extend(self.check_version_and_security(doc))
         
         # 2. RBAC Specific Security Checks
         raw_findings.extend(self.check_rbac_security(doc))
         
-        # 3. HPA Logic Cross-Reference
+        # 3. Cross-Resource Logic (HPA & Ingress)
         if all_docs:
             raw_findings.extend(self.audit_hpa(doc, all_docs))
+            raw_findings.extend(self.check_ingress_service_alignment(doc, all_docs))
 
-        # --- Line Number Attachment ---
+        # --- Line Number Attachment & Consistency Check ---
         for f in raw_findings:
-            # If the specific check didn't already attach a line, use the base line
-            if 'line' not in f:
+            if 'line' not in f or f['line'] <= 0:
                 f['line'] = base_line
             findings.append(f)
             
+        return findings
+
+    def check_ingress_service_alignment(self, doc, all_docs):
+        """Checks if Ingress backends point to valid Services and Ports."""
+        findings = []
+        if doc.get('kind') == 'Ingress':
+            ingress_name = doc.get('metadata', {}).get('name')
+            ingress_ns = doc.get('metadata', {}).get('namespace', 'default')
+            spec = doc.get('spec', {})
+            
+            for rule in spec.get('rules', []):
+                for path in rule.get('http', {}).get('paths', []):
+                    backend = path.get('backend', {})
+                    svc_node = backend.get('service', backend) 
+                    target_svc = svc_node.get('name') or backend.get('serviceName')
+                    
+                    port_node = svc_node.get('port', {})
+                    target_port = port_node.get('number') if isinstance(port_node, dict) else port_node
+
+                    if not target_svc: continue
+
+                    matched_svc = next((d for d in all_docs if d.get('kind') == 'Service' 
+                                       and d.get('metadata', {}).get('name') == target_svc
+                                       and d.get('metadata', {}).get('namespace', 'default') == ingress_ns), None)
+
+                    if matched_svc:
+                        svc_ports = [p.get('port') for p in matched_svc.get('spec', {}).get('ports', [])]
+                        if target_port and target_port not in svc_ports:
+                            findings.append({
+                                "code": "INGRESS_PORT_MISMATCH",
+                                "severity": "🔴 CRITICAL",
+                                "msg": f"Ingress '{ingress_name}' points to port {target_port}, but Service '{target_svc}' only exposes {svc_ports}.",
+                                "line": self.get_line(path)
+                            })
+                    else:
+                        findings.append({
+                            "code": "INGRESS_ORPHAN",
+                            "severity": "🟠 WARNING",
+                            "msg": f"Ingress '{ingress_name}' points to Service '{target_svc}', but that Service was not found in this namespace.",
+                            "line": self.get_line(path)
+                        })
         return findings
 
     def check_version_and_security(self, doc: dict) -> list:
@@ -91,38 +122,36 @@ class Shield:
         kind = doc.get('kind', 'Object')
         name = doc.get('metadata', {}).get('name', 'unknown')
         
-        # --- API Deprecation Check ---
         if api in self.DEPRECATIONS:
             mapping = self.DEPRECATIONS[api]
             better = mapping.get(kind, mapping.get("default")) if isinstance(mapping, dict) else mapping
             findings.append({
                 "severity": "🟡 API",
                 "code": "API_DEPRECATED",
-                "msg": f"🛡️ {kind} '{name}' uses '{api}'. Upgrade to '{better}'."
+                "msg": f"🛡️ {kind} '{name}' uses '{api}'. Upgrade to '{better}'.",
+                "line": self.get_line(doc, 'apiVersion')
             })
         
-        # --- Security Check: Workload Specifics ---
         if kind in ['Deployment', 'Pod', 'StatefulSet', 'DaemonSet']:
             spec = doc.get('spec') or {}
             template = spec.get('template') or {} if kind != 'Pod' else doc
             t_spec = template.get('spec') or {}
-            containers = t_spec.get('containers') or []
-
-            # 1. Automounted Tokens (Now safely inside the Kind check)
+            
             if t_spec.get('automountServiceAccountToken') is not False:
                 findings.append({
                     "severity": "🟡 WARN",
                     "code": "SEC_TOKEN_MOUNT",
-                    "msg": f"🛡️ Best Practice: {kind} '{name}' automounts ServiceAccount tokens. Set 'automountServiceAccountToken: false' if API access isn't needed."
+                    "msg": f"🛡️ Best Practice: {kind} '{name}' automounts ServiceAccount tokens.",
+                    "line": self.get_line(t_spec, 'automountServiceAccountToken') if 'automountServiceAccountToken' in t_spec else self.get_line(doc)
                 })
             
-            # 2. Privileged Mode
-            for c in containers:
+            for c in t_spec.get('containers', []):
                 if c.get('securityContext', {}).get('privileged'):
                     findings.append({
                         "severity": "🔴 HIGH",
                         "code": "SEC_PRIVILEGED",
-                        "msg": f"🚨 Security Risk: Container '{c.get('name')}' in {kind} '{name}' is Privileged."
+                        "msg": f"🚨 Security Risk: Container '{c.get('name')}' in {kind} '{name}' is Privileged.",
+                        "line": self.get_line(c)
                     })
         return findings
 
@@ -138,87 +167,57 @@ class Shield:
                 verbs = rule.get("verbs", [])
                 resources = rule.get("resources", [])
 
-                # Global Wildcards
                 if "*" in verbs and "*" in resources:
                     findings.append({
-                        "severity": "🔴 HIGH",
+                        "severity": "🔴 HIGH", 
                         "code": "RBAC_WILD",
-                        "msg": f"🚨 Critical Security Risk: {kind} '{name}' uses global wildcards (*)."
+                        "msg": f"🚨 Critical Security Risk: {kind} '{name}' uses global wildcards (*).",
+                        "line": self.get_line(rule)
                     })
-                
-                # Broad Secret Access
                 elif "secrets" in resources and any(v in verbs for v in ["*", "get", "list", "watch"]):
                      findings.append({
-                        "severity": "🟠 MED",
+                        "severity": "🟠 MED", 
                         "code": "RBAC_SECRET",
-                        "msg": f"🛡️ Security Warning: {kind} '{name}' allows read access to Secrets."
+                        "msg": f"🛡️ Security Warning: {kind} '{name}' allows read access to Secrets.",
+                        "line": self.get_line(rule)
                     })
         return findings
 
-    def audit_hpa(self, hpa_doc: dict, workload_docs: list) -> list:
-        """
-        Validates HPA logic against targeted workloads and identifies missing resource requests.
-        """
+    def audit_hpa(self, hpa_doc: dict, all_docs: list) -> list:
+        """Validates HPA scales on workloads that have resource requests."""
         findings = []
-
         if hpa_doc.get('kind') != 'HorizontalPodAutoscaler':
             return findings
 
-        spec = hpa_doc.get('spec') or {}
-        target_ref = spec.get('scaleTargetRef') or {}
+        spec = hpa_doc.get('spec', {})
+        target_ref = spec.get('scaleTargetRef', {})
         target_name = target_ref.get('name')
+        hpa_ns = hpa_doc.get('metadata', {}).get('namespace', 'default')
         
-        # 1. Extract resource metrics the HPA is trying to scale on
         resource_checks = []
         if spec.get('targetCPUUtilizationPercentage'):
             resource_checks.append('cpu')
             
-        metrics = spec.get('metrics') or []
-        for m in metrics:
+        for m in spec.get('metrics', []):
             if m.get('type') == 'Resource':
-                res_data = m.get('resource') or {}
-                res_name = res_data.get('name')
-                if res_name:
-                    resource_checks.append(res_name)
+                res_name = m.get('resource', {}).get('name')
+                if res_name: resource_checks.append(res_name)
         
-        if not resource_checks:
-            return findings
+        if not resource_checks: return findings
 
-        # Extract HPA namespace (defaulting to 'default')
-        hpa_ns = hpa_doc.get('metadata', {}).get('namespace', 'default')
-        
-        # Match both Name AND Namespace
-        target_workload = next((
-            w for w in workload_docs 
-            if w.get('metadata', {}).get('name') == target_name 
-            and w.get('metadata', {}).get('namespace', 'default') == hpa_ns
-        ), None)
+        target_workload = next((w for w in all_docs if w.get('metadata', {}).get('name') == target_name 
+                               and w.get('metadata', {}).get('namespace', 'default') == hpa_ns
+                               and w.get('kind') in ['Deployment', 'StatefulSet']), None)
         
         if target_workload:
-            kind = target_workload.get('kind')
-            w_spec = target_workload.get('spec') or {}
-            pod_template = w_spec.get('template') or {} if kind != 'Pod' else target_workload
-            p_spec = pod_template.get('spec') or {}
-            containers = p_spec.get('containers') or []
-            
-            # Use the spec line as a fallback for the line number
-            fallback_line = self.get_line(target_workload, 'spec')
-
-            for res_to_check in set(resource_checks):
+            containers = target_workload.get('spec', {}).get('template', {}).get('spec', {}).get('containers', [])
+            for res in set(resource_checks):
                 for c in containers:
-                    res_config = c.get('resources') or {}
-                    requests = res_config.get('requests') or {}
-                    
-                    if res_to_check not in requests:
-                        # 3. Identify the specific container line for the finding
-                        container_line = self.get_line(c) or fallback_line
-                        
+                    if res not in c.get('resources', {}).get('requests', {}):
                         findings.append({
                             "severity": "🔴 HIGH",
                             "code": "HPA_MISSING_REQ",
-                            "msg": f"📈 HPA Logic Error: Scales on {res_to_check}, but '{target_name}' container '{c.get('name')}' lacks {res_to_check} requests.",
-                            "line": container_line
+                            "msg": f"📈 HPA Logic Error: Scales on {res}, but '{target_name}' lacks {res} requests.",
+                            "line": self.get_line(c)
                         })
-        
         return findings
-    
