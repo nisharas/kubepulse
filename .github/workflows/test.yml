@@ -29,7 +29,6 @@ jobs:
 
       - name: Clean Cache and Run Tests
         run: |
-          # Wipe old memory files to ensure we run your NEW main.py
-          find . -name "*.pyc" -delete
-          find . -name "__pycache__" -delete
+          # Use the absolute path to ensure we aren't using a ghost copy
+          export PYTHONPATH=$PYTHONPATH:$(pwd)/src
           python -m pytest tests/
