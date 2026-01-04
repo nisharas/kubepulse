@@ -4,7 +4,11 @@ import os
 
 # Helper to run KubeCuro commands
 def run_kubecuro(*args):
- 
+  
+  # This ensures the current directory is added to the path 
+    # so 'kubecuro.main' can always be found
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.getcwd()
     return subprocess.run(
         [sys.executable, "-m", "kubecuro.main", *args],
         capture_output=True,
