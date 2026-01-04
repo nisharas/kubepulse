@@ -279,6 +279,7 @@ def run():
             
             for issue in file_issues:
                 explanation = EXPLAIN_CATALOG.get(issue.code.lower(), issue.message)
+                title_str = f"📍 Line {issue.line}" if issue.line else "Logic Violation"
                 console.print(Panel(f"[bold red]ISSUE:[/bold red] {issue.code}\n[yellow]WHY:[/yellow] {explanation}", border_style="red"))
             return
 
