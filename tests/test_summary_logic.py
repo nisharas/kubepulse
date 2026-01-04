@@ -6,16 +6,16 @@ def calculate_summary_logic(all_issues, command="scan"):
     Simulates the logic block from main.py to verify 
     counters and 'Before vs After' math.
     """
-    # Updated codes to match shield.py and synapse.py
     ghosts    = sum(1 for i in all_issues if str(i.code).upper() == 'GHOST')
     hpa_gaps  = sum(1 for i in all_issues if str(i.code).upper() in ['HPA_LOGIC', 'HPA_MISSING_REQ'])
     
-    # Ensure security checks include the new SEC_PRIVILEGED from Healer integration
-    security  = sum(1 for i in all_issues if any(x in str(i.code).upper() for x in ['RBAC', 'PRIVILEGED', 'SECRET']))
+    # IMPROVED LOGIC: Check both the code AND the message for security keywords
+    # This ensures that a "FIXED" privileged container is still counted as a security item.
+    security  = sum(1 for i in all_issues if 
+                    any(x in str(i.code).upper() for x in ['RBAC', 'PRIVILEGED', 'SECRET']) or
+                    any(x in str(i.message).upper() for x in ['RBAC', 'PRIVILEGED', 'SECRET']))
     
     repairs   = sum(1 for i in all_issues if str(i.code).upper() == 'FIXED')
-    
-    # Logic: How many issues are NOT auto-repaired?
     remaining = len([i for i in all_issues if "FIXED" not in str(i.severity).upper()])
     
     return {
