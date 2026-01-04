@@ -266,7 +266,13 @@ def run():
                 ))
     
     # 4. SYNAPSE AUDIT
-    all_issues.extend(syn.audit())
+    synapse_issues = syn.audit()
+    for issue in synapse_issues:
+        # Ensure every field is a string to prevent Rich rendering errors
+        issue.code = str(issue.code)
+        issue.severity = str(issue.severity)
+        issue.message = str(issue.message)
+        all_issues.append(issue)
 
     # --- 4. REPORTING ---
     if not all_issues:
