@@ -10,6 +10,18 @@
 
 **KubeCuro** is a high-performance, production-grade CLI tool designed to eliminate the "silent killers" of Kubernetes deployments.
 
+> [!TIP]
+> **Get started in seconds:**
+> ```bash
+> # 1. Install (Linux x86_64)
+> curl -L -O https://github.com/nisharas/kubecuro/releases/download/v1.0.0/kubecuro && chmod +x kubecuro && sudo mv kubecuro /usr/local/bin/
+> 
+> # 2. Scan your manifests (Ensure the folder contains .yaml or .yml files)
+> kubecuro scan .
+> ```
+
+---
+
 ## 🎯 Our Mission
 **To ensure that every Kubernetes manifest is not just syntactically correct, but logically sound and production-ready.** We believe that YAML validation should go beyond "Is it valid?" and answer "Will it work?"
 
@@ -27,6 +39,7 @@
 **The Solution:** KubeCuro closes this feedback loop. It analyzes the **relationships** between files, detecting logical orphans and connection gaps before they reach your control plane.
 
 ---
+
 ## ⚖️ Why KubeCuro? (The Logic Gap)
 
 Most tools only check if the "grammar" of your YAML is correct. KubeCuro checks if the "story" makes sense.
@@ -79,7 +92,22 @@ KubeCuro goes beyond standard linters by auditing the **relationships** between 
 ### 🩺 Healer: Structural Repair
 * **Auto-Repair:** The `fix` command automatically heals YAML indentation and upgrades deprecated APIs while maintaining a dry-run preview. (Verified in tests)
 
+## 📦 Supported Kubernetes Resources
+
+KubeCuro currently provides deep-logic analysis for the following core resources:
+
+| Resource Type | Synapse (Logic) | Shield (Security) | Healer (Auto-Fix) |
+| :--- | :---: | :---: | :---: |
+| **Deployments** | ✅ | ✅ | ✅ |
+| **Services** | ✅ | ✅ | ✅ |
+| **HPAs** | ✅ | ❌ | ✅ |
+| **Ingress** | ❌ | ✅ | ✅ |
+| **StatefulSets** | ✅ | ✅ | ❌ |
+
+> **Note:** We are constantly adding new resource definitions. If you need support for a specific CRD, please open an issue!
+
 ---
+
 ## 🧠 Diagnostic Intelligence
 
 KubeCuro categorizes issues based on their impact on cluster stability:
@@ -96,7 +124,9 @@ KubeCuro is designed with a "Security-First" architecture, operating as a locali
 * **Zero Data Leakage:** Runs entirely locally. No external network requests.
 * **Air-Gapped by Design:** Does not need a connection to the K8s API server.
 * **Read-Only by Default:** The scan command never modifies your files.
+
 ---
+
 ## ⚖️ Design Philosophy: The "Safe" CNCF Approach
 KubeCuro is built on the principle of Predictable Automation. We distinguish between structural repair and logical intent to ensure your manifests remain under your total control.
 
@@ -107,6 +137,7 @@ KubeCuro is built on the principle of Predictable Automation. We distinguish bet
 Why? In production Kubernetes environments, auto-fixing a label could accidentally route traffic to the wrong database. KubeCuro fixes the format but respects your intent.
 
 ---
+
 ## 🖥️ Compatibility & Requirements
 
 KubeCuro is distributed as a **fully static Linux binary**. 
@@ -116,6 +147,7 @@ KubeCuro is distributed as a **fully static Linux binary**.
 * **Dependencies:** None. (Self-contained static binary)
 
 > **Note:** This binary will not run on ARM64 architectures (e.g., Apple M-series chips, Raspberry Pi, or AWS Graviton) or non-Linux operating systems (Windows/macOS) natively.
+
 ---
 
 ## 🛠️ Installation
@@ -162,6 +194,7 @@ source ~/.zshrc   # if using Zsh
 ```
 
 ---
+
 ## 💻 Usage
 
 **1. Smart Scan**
@@ -191,7 +224,9 @@ kubecuro explain rbac
 ```bash
 kubecuro --help
 ```
+
 ---
+
 ## 📊 Sample Output
 
 **1. Running a Smart Scan**
