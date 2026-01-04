@@ -236,10 +236,15 @@ def run():
     with console.status(f"[bold green]Processing {len(files)} files...") as status:
         for f in files:
             fname = os.path.basename(f)
-            # 1. HEALER STAGE
-            # If command is 'scan', force dry_run to True so Shield can see the original errors
-            force_dry = True if command == "scan" else args.dry_run
-            is_fixed = linter_engine(f, dry_run=force_dry)
+            
+            # 1. SYNAPSE STAGE
+            syn.scan_file(f)
+            
+            # 2. HEALER STAGE
+            # Ensure scan mode doesn't overwrite memory for other auditors
+            effective_dry = True if command == "scan" else args.dry_run
+            is_fixed = linter_engine(f, dry_run=effective_dry)
+            
             if is_fixed:
                 all_issues.append(AuditIssue(
                     code="FIXED", 
@@ -249,8 +254,7 @@ def run():
                     fix="N/A", 
                     source="Healer"
                 ))
-            # 2. SYNAPSE STAGE
-            syn.scan_file(f)
+
 
     # 3. SHIELD STAGE
     for doc in syn.all_docs:
