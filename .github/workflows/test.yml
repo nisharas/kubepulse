@@ -29,6 +29,10 @@ jobs:
 
       - name: Clean Cache and Run Tests
         run: |
-          # Use the absolute path to ensure we aren't using a ghost copy
-          export PYTHONPATH=$PYTHONPATH:$(pwd)/src
+          # 1. Wipe old memory files
+          find . -name "*.pyc" -delete
+          find . -name "__pycache__" -delete
+          
+          # 2. Run pytest WITHOUT PYTHONPATH. 
+          # This ensures we test the 'installed' version, not the local 'src' folder.
           python -m pytest tests/
