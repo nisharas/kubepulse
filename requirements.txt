@@ -4,7 +4,7 @@ ruamel.yaml>=0.17.21
 
 # --- CLI Interface & Experience ---
 # Required for the terminal colors and progress bars
-rich>=13.0.0
+rich>=13.7.0
 # Required for the command-line tab-completion (The missing piece!)
 argcomplete>=3.0.0
 
