@@ -22,6 +22,8 @@ jobs:
           # 2. Install the project in 'editable' mode (-e)
           # This links the code directly to the environment
           pip install -e .
+          # Final force-check to ensure rich is the right version
+          python -m pip install "rich>=13.7.0"
 
       - name: Run Logic Tests
         # We use 'python -m pytest' to ensure it uses the local version of the tool
