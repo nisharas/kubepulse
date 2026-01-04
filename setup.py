@@ -30,8 +30,9 @@ setup(
     
     # Dependencies aligned with production scripts
     install_requires=[
-        "ruamel.yaml>=0.17.0",
-        "rich>=12.0.0",
+        "ruamel.yaml>=0.17.21",
+        "rich>=13.7.0",
+        "argcomplete>=3.0.0",
     ],
     
     # CLI entry point logic
