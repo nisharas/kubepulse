@@ -237,49 +237,34 @@ def run():
         for f in files:
             fname = os.path.basename(f)
             
-            # 1. SYNAPSE STAGE
-            syn.scan_file(f)
+            # 1. Load and Scan with Synapse
+            syn.scan_file(f) 
             
-            # 2. HEALER STAGE
-            # Ensure scan mode doesn't overwrite memory for other auditors
+            # 2. Healer Check
             effective_dry = True if command == "scan" else args.dry_run
-            is_fixed = linter_engine(f, dry_run=effective_dry)
-            
-            if is_fixed:
+            if linter_engine(f, dry_run=effective_dry):
                 all_issues.append(AuditIssue(
-                    code="FIXED", 
-                    severity="🟢 FIXED" if not args.dry_run else "🟡 WOULD FIX", 
-                    file=fname, 
-                    message="Repaired YAML syntax/API versioning.", 
-                    fix="N/A", 
-                    source="Healer"
+                    code="FIXED", severity="🟡 WOULD FIX" if effective_dry else "🟢 FIXED",
+                    file=fname, message="Repaired YAML syntax/API versioning.", source="Healer"
                 ))
 
-    # 3. SHIELD STAGE
-    for doc in syn.all_docs:
-        shield_findings = shield.scan(doc, all_docs=syn.all_docs)
-        for finding in shield_findings:
-            # FIX: If _origin_file is missing, use the target name from args
-            # This ensures the 'File' column in the Rich table isn't 'unknown'
-            raw_fname = doc.get('_origin_file')
-            if not raw_fname:
-                raw_fname = os.path.basename(target) if not os.path.isdir(target) else "manifest.yaml"
-            fname = str(raw_fname)
-            
-            # Ensure we don't skip the finding during a scan
-            if command == "fix":
-                already_healed = any(i.file == fname and i.code == "FIXED" for i in all_issues)
-                if already_healed and finding.get('code') == "API_DEPRECATED":
-                    continue
-
-            all_issues.append(AuditIssue(
-                code=str(finding.get('code', 'API_DEPRECATED')),
-                severity=str(finding.get('severity', '🟠 MED')),
-                file=fname,
-                message=str(finding.get('msg', 'Deprecated API version detected')),
-                fix="Run 'kubecuro fix'",
-                source="Shield"
-            ))
+            # 3. Shield Check (Run immediately while we have the context)
+            # We look at the docs just added to synapse for this specific file
+            current_docs = [d for d in syn.all_docs if d.get('_origin_file') == f or len(files) == 1]
+            for doc in current_docs:
+                for finding in shield.scan(doc, all_docs=syn.all_docs):
+                    # Filter out already-fixed deprecations in 'fix' mode
+                    if command == "fix" and finding['code'] == "API_DEPRECATED":
+                        if any(i.file == fname and i.code == "FIXED" for i in all_issues):
+                            continue
+                    
+                    all_issues.append(AuditIssue(
+                        code=str(finding['code']),
+                        severity=str(finding['severity']),
+                        file=fname,
+                        message=str(finding['msg']),
+                        source="Shield"
+                    ))
             
     # 4. SYNAPSE AUDIT
     synapse_issues = syn.audit()
