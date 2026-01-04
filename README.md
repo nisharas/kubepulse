@@ -3,6 +3,8 @@
 [![Kubernetes](https://img.shields.io/badge/kubernetes-%23326ce5.svg?style=flat&logo=kubernetes&logoColor=white)](https://kubernetes.io)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+![Build Status](https://github.com/nisharas/kubecuro/actions/workflows/test.yml/badge.svg?branch=main)
+![Stage](https://img.shields.io/badge/status-beta-orange)
 
 <img src="src/kubecuro/assets/KubeCuro-Logo.png" width="300">
 
@@ -45,24 +47,37 @@ Instead of a CI/CD pipeline failing with a cryptic "Invalid YAML" error, KubeCur
 2. Prevent Silent Failures -
 A Service with a typo in its selector won't throw a Kubernetes error—it just won't send traffic to your Pods. These "silent failures" are the hardest to debug. Synapse catches these instantly.
 
-3. Healer - Enhanced auto-repair for mixed indentation and deprecated API versions.
-
-4. Zero-Dependency Portability
+3. Zero-Dependency Portability
 Thanks to the static build process, KubeCuro is a single, 15MB binary.
 
     * No Python required.
     * No pip install.
     * Just chmod +x and run. This makes it perfect for Scratch-based Docker images or restricted CI runners.
       
-5. Smart Tab-Completion: Full support for Bash and Zsh with an automated installer.
+4. Smart Tab-Completion: Full support for Bash and Zsh with an automated installer.
 
-6. Explain Engine: Direct access to K8s logic best practices via kubecuro explain.
+5. Explain Engine: Direct access to K8s logic best practices via kubecuro explain.
 ## 🛠️ The Three Pillars of KubeCuro
 | Engine | Purpose | Real-World Value |
 | --- | --- | --- |
 | 🩺 Healer | Auto-Fixing | Stops "Death by Indentation." Automatically repairs syntax and formatting issues, showing a clear diff of changes. |
 | 🧠 Synapse | Logic Audit | Detects "Ghost Services." Ensures that Selectors, Labels, and Ports actually align across different files. |
 | 🛡️ Shield | Security & Versioning | Prevents "API Rot." Flags deprecated API versions and insecure configurations before they hit your cluster. |
+
+## 🚀 Intelligent Logic Checks (Verified)
+
+KubeCuro goes beyond standard linters by auditing the **relationships** between your resources.
+
+### 🧠 Synapse: Networking & Scaling Logic
+* **Ghost Service Detection:** Identifies `Services` that target labels matching zero `Pods`. (Verified in tests)
+* **HPA Resource Gap:** Flags `HorizontalPodAutoscalers` that scale based on CPU/Memory when those resources aren't defined in the deployment. (Verified in tests)
+
+### 🛡️ Shield: Versioning & Security
+* **API Rot Protection:** Automatically detects deprecated API versions (like `extensions/v1beta1`) before they break your cluster upgrade. (Verified in tests)
+* **Severity Scoring:** Issues are categorized into `GHOST`, `PORT`, and `API` for easy prioritization.
+
+### 🩺 Healer: Structural Repair
+* **Auto-Repair:** The `fix` command automatically heals YAML indentation and upgrades deprecated APIs while maintaining a dry-run preview. (Verified in tests)
 
 ---
 ## 🧠 Diagnostic Intelligence
