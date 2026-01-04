@@ -1,11 +1,20 @@
-# UI and Terminal Formatting
-rich>=13.0.0
-
-# Advanced YAML Engine (Required for Healer's Round-Trip 'rt' mode)
+# --- Core Logic & YAML ---
+# Required for the 'Healer' engine to preserve comments and formatting
 ruamel.yaml>=0.17.21
 
-# Compatibility and Path handling
+# --- CLI Interface & Experience ---
+# Required for the terminal colors and progress bars
+rich>=13.0.0
+# Required for the command-line tab-completion (The missing piece!)
+argcomplete>=3.0.0
+
+# --- Compatibility & Utilities ---
 typing-extensions>=4.0.0; python_version < "3.10"
 
-# Build Tools (If you plan to create the binary)
+# --- Testing & Quality (Dev Only) ---
+# Needed for the automated "Inspector" we just set up
+pytest>=8.0.0
+
+# --- Build Tools ---
+# Needed to turn your code into a single .exe or binary file
 pyinstaller>=6.0.0
