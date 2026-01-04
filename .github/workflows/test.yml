@@ -13,24 +13,13 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-          cache: 'pip' # Tells GitHub to manage the cache properly
 
-      - name: Install Dependencies
+      - name: Install Project
         run: |
           python -m pip install --upgrade pip
-          # We uninstall any pre-existing rich to clear the "Ghost" version
-          pip uninstall -y rich 
-          # We install it fresh with the exact version you need
-          pip install "rich>=13.7.0" 
-          pip install -r requirements.txt
-          pip install -e .
-
-      - name: Debug Environment (Founder's Safety Check)
-        run: |
-          echo "Checking Rich Version:"
-          python -c "import rich; print(rich.__version__)"
-          echo "Checking if soft_wrap exists:"
-          python -c "from rich.table import Table; print('Success' if 'soft_wrap' in Table.add_column.__code__.co_varnames else 'Failure')"
+          # This installs your project AND all its requirements in one go
+          pip install . 
 
       - name: Run Logic Tests
+        # We run it via 'python -m pytest' to ensure it sees the installed 'kubecuro'
         run: python -m pytest tests/
