@@ -257,10 +257,10 @@ def run():
             already_fixed = any(i.file == doc.get('_origin_file') and i.code == "FIXED" for i in all_issues)
             if not (command == "fix" and already_fixed and finding['code'] == "API_DEPRECATED"):
                 all_issues.append(AuditIssue(
-                    code=finding['code'],
-                    severity=finding['severity'],
-                    file=doc.get('_origin_file', 'unknown'),
-                    message=finding['msg'],
+                    code=str(finding['code']),
+                    severity=str(finding['severity']),
+                    file=str(doc.get('_origin_file', 'unknown')),
+                    message=str(finding['msg']),
                     fix="Check 'kubecuro explain'",
                     source="Shield"
                 ))
