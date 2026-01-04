@@ -3,9 +3,13 @@ import sys
 import os
 
 # Helper to run KubeCuro commands
-def run_kubecuro(command, target):
+def run_kubecuro(*args):
+    # This ensures we use the exact same Python that is running pytest
+    import sys
+    import subprocess
+    
     return subprocess.run(
-        [sys.executable, "-m", "kubecuro.main", command, target],
+        [sys.executable, "-m", "kubecuro.main", *args],
         capture_output=True,
         text=True
     )
