@@ -254,16 +254,23 @@ def run():
     for doc in syn.all_docs:
         shield_findings = shield.scan(doc, all_docs=syn.all_docs)
         for finding in shield_findings:
-            already_fixed = any(i.file == doc.get('_origin_file') and i.code == "FIXED" for i in all_issues)
-            if not (command == "fix" and already_fixed and finding['code'] == "API_DEPRECATED"):
-                all_issues.append(AuditIssue(
-                    code=str(finding['code']),
-                    severity=str(finding['severity']),
-                    file=str(doc.get('_origin_file', 'unknown')),
-                    message=str(finding['msg']),
-                    fix="Check 'kubecuro explain'",
-                    source="Shield"
-                ))
+            # Check if we already fixed this in the Healer stage
+            fname = str(doc.get('_origin_file', 'unknown'))
+            already_fixed = any(i.file == fname and i.code == "FIXED" for i in all_issues)
+            
+            # If we are in 'fix' mode and it's already patched, skip the warning
+            if command == "fix" and already_fixed and finding['code'] == "API_DEPRECATED":
+                continue
+
+            # Add to report
+            all_issues.append(AuditIssue(
+                code=str(finding['code']),
+                severity=str(finding['severity']),
+                file=fname,
+                message=str(finding['msg']),
+                fix="Check 'kubecuro explain'",
+                source="Shield"
+            ))
     
     # 4. SYNAPSE AUDIT
     synapse_issues = syn.audit()
