@@ -12,6 +12,7 @@ import argparse
 import platform
 import difflib
 from typing import List
+from argcomplete.completers import FilesCompleter
 
 # UI and Logging Imports
 from rich.console import Console
@@ -142,10 +143,18 @@ def show_help():
     opt_table.add_row("  --dry-run", "Show fixes without modifying files (use with 'fix')")
     help_console.print(opt_table)
 
-    help_console.print("\n[bold yellow]Extensive Examples:[/bold yellow]")
-    help_console.print("  [dim]1. Scan a specific file for logic gaps:[/dim]\n      kubecuro scan deployment.yaml")
-    help_console.print("\n  [dim]2. Automatically fix API deprecations and syntax:[/dim]\n      kubecuro fix ./prod-cluster/")
-    help_console.print("\n  [dim]3. Enable Autocomplete:[/dim]")
+    help_console.print("\n[bold yellow]Examples:[/bold yellow]")
+    help_console.print("  [dim]1. Scan a specific file for logic gaps:[/dim]")
+    help_console.print("     kubecuro scan deployment.yaml")
+    help_console.print("\n  [dim]2. Smart-Route (Automatic Scan if command is omitted):[/dim]")
+    help_console.print("     kubecuro ./manifests/")
+    help_console.print("\n  [dim]3. Automatically fix API deprecations and syntax:[/dim]")
+    help_console.print("     kubecuro fix ./test-cluster/")
+    help_console.print("\n  [dim]4. Preview fixes without touching the YAML files:[/dim]")
+    help_console.print("     kubecuro fix service.yaml --dry-run")
+    help_console.print("\n  [dim]5. Understand why KubeCuro audits RBAC:[/dim]")
+    help_console.print("     kubecuro explain rbac")
+    help_console.print("\n  [dim]6. Enable Autocomplete:[/dim]")
     help_console.print("      [bold cyan]source <(kubecuro completion bash)[/bold cyan]")
     
     help_console.print("\n[italic white]Architecture: Static Binary / x86_64[/italic white]\n")
@@ -227,7 +236,15 @@ def run():
     subparsers.add_parser("version")
     
     explain_p = subparsers.add_parser("explain")
-    explain_p.add_argument("resource", nargs="?")
+    resource_arg = explain_p.add_argument(
+        "resource", 
+        nargs="?", 
+        help="Resource keyword (hpa, rbac, etc.) or path to a YAML file"
+    )
+
+    # This custom lambda tells argcomplete: 
+    # "Suggest these keywords AND look for files in the current folder"
+    resource_arg.completer = lambda prefix, **kwargs: list(EXPLAIN_CATALOG.keys()) + FilesCompleter()("__call__", prefix)
     
     subparsers.add_parser("completion").add_argument("shell", choices=["bash", "zsh"])
 
