@@ -259,22 +259,22 @@ def run():
     for doc in syn.all_docs:
         shield_findings = shield.scan(doc, all_docs=syn.all_docs)
         for finding in shield_findings:
-            fname = str(doc.get('_origin_file', 'unknown'))
+            # Fallback to the filename if _origin_file isn't in the doc
+            fname = str(doc.get('_origin_file', os.path.basename(target)))
             
-            # Simplified Logic:
-            # During 'scan', we ALWAYS show findings.
-            # During 'fix', we only show them if they aren't auto-fixed.
+            # During 'scan', we always want to see the audit result
             if command == "fix":
                 already_healed = any(i.file == fname and i.code == "FIXED" for i in all_issues)
-                if already_healed and finding['code'] == "API_DEPRECATED":
+                if already_healed and finding.get('code') == "API_DEPRECATED":
                     continue
 
+            # CRITICAL: Use .get() to avoid KeyErrors and ensure strings for Rich
             all_issues.append(AuditIssue(
-                code=str(finding.get('code', 'SHIELD_ERR')),
+                code=str(finding.get('code', 'API_DEPRECATED')),
                 severity=str(finding.get('severity', '🟠 MED')),
-                file=fname,
-                message=str(finding.get('msg', 'Logic violation detected')),
-                fix="Check 'kubecuro explain'",
+                file=str(fname),
+                message=str(finding.get('msg', 'Deprecated API version detected')),
+                fix="Run 'kubecuro fix'",
                 source="Shield"
             ))
             
