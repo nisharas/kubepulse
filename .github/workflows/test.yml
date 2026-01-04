@@ -10,29 +10,29 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5 # Updated to v5
         with:
-          python-version: '3.10'
+          python-version: '3.12' # Matched to your local 3.12.3
 
       - name: Install Project & Testing Tools
         run: |
           python -m pip install --upgrade pip
-          # Force install the version we know works
-          pip install --upgrade --force-reinstall rich==14.2.0
-          pip install .
+          # Install from your local requirements first
+          pip install -r requirements.txt
+          # Force specific rich version if needed, then install package
+          pip install --upgrade rich==14.2.0
+          pip install -e . 
           pip install pytest
 
       - name: Environment Truth-Check
         run: |
           python -m pip show rich
-          # This confirms the 'rich' library is exactly where we expect it
+          python --version
 
       - name: Clean Cache and Run Tests
         run: |
-          # 1. Wipe old memory files
           find . -name "*.pyc" -delete
           find . -name "__pycache__" -delete
           
-          # 2. Run pytest WITHOUT PYTHONPATH. 
-          # This ensures we test the 'installed' version, not the local 'src' folder.
+          # We use python -m pytest to ensure the installed 'src' is picked up
           python -m pytest tests/
