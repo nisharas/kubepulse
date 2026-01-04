@@ -33,6 +33,24 @@ class Shield:
         "discovery.k8s.io/v1beta1": "discovery.k8s.io/v1"
     }
 
+    def get_line(self, doc, key=None):
+        """
+        Helper to extract the line number from a ruamel.yaml-parsed dict.
+        'key' can be a specific field (e.g., 'spec') to get that field's line.
+        """
+        try:
+            if not hasattr(doc, 'lc'):
+                return 0
+            
+            if key and key in doc.lc.data:
+                # Returns the line number for the specific key
+                return doc.lc.data[key][0] + 1
+            
+            # Returns the starting line of the document
+            return doc.lc.line + 1
+        except Exception:
+            return 0
+
     def scan(self, doc: dict, all_docs: list = None) -> list:
         """
         The main entry point for the Shield Engine. 
@@ -42,15 +60,27 @@ class Shield:
         if not doc or not isinstance(doc, dict):
             return findings
 
+        # Capture the base line number for the resource (e.g., where 'apiVersion' starts)
+        base_line = self.get_line(doc)
+
         # 1. API Version & Pod Security Checks
-        findings.extend(self.check_version_and_security(doc))
+        # Pass the line number into the check methods
+        raw_findings = []
+        raw_findings.extend(self.check_version_and_security(doc))
         
         # 2. RBAC Specific Security Checks
-        findings.extend(self.check_rbac_security(doc))
+        raw_findings.extend(self.check_rbac_security(doc))
         
-        # 3. HPA Logic Cross-Reference (Requires all docs in the directory)
+        # 3. HPA Logic Cross-Reference
         if all_docs:
-            findings.extend(self.audit_hpa(doc, all_docs))
+            raw_findings.extend(self.audit_hpa(doc, all_docs))
+
+        # --- Line Number Attachment ---
+        for f in raw_findings:
+            # If the specific check didn't already attach a line, use the base line
+            if 'line' not in f:
+                f['line'] = base_line
+            findings.append(f)
             
         return findings
 
@@ -121,7 +151,7 @@ class Shield:
         Validates HPA logic against targeted workloads.
         """
         findings = []
-        if hpa_doc.get('kind') != 'HorizontalPodAutoscalers' and hpa_doc.get('kind') != 'HorizontalPodAutoscaler':
+        if hpa_doc.get('kind') != 'HorizontalPodAutoscaler':
             return findings
 
         spec = hpa_doc.get('spec') or {}
