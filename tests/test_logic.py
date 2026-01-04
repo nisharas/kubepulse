@@ -23,8 +23,9 @@ def test_ghost_service_logic():
 def test_deprecated_api_shield():
     """Scenario: Shield should catch old API versions."""
     result = run_kubecuro("scan", "tests/samples/deprecated_api.yaml")
-    # Shield usually outputs MED severity for deprecated APIs
-    assert "API_DEPRECATED" in result.stdout or "MED" in result.stdout
+    # Look for the keyword regardless of emojis or Rich color tags
+    output = result.stdout.upper()
+    assert "API_DEPRECATED" in output or "MED" in output
 
 def test_hpa_resource_check():
     """Scenario: HPA scaling without resource requests defined."""
