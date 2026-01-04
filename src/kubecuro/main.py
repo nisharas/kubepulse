@@ -266,7 +266,7 @@ def run():
         res_table = Table(title="\n📊 Diagnostic Report", header_style="bold cyan", box=None)
         res_table.add_column("Severity") 
         res_table.add_column("File", style="dim") 
-        res_table.add_column("Message", soft_wrap=True)
+        res_table.add_column("Message", overflow="fold")
         for i in all_issues:
             c = "red" if "🔴" in i.severity else "orange3" if "🟠" in i.severity else "green"
             res_table.add_row(f"[{c}]{i.severity}[/{c}]", i.file, i.message)
