@@ -101,13 +101,22 @@ class Shield:
                 "msg": f"🛡️ {kind} '{name}' uses '{api}'. Upgrade to '{better}'."
             })
         
-        # --- Security Check: Privileged Mode ---
+        # --- Security Check: Workload Specifics ---
         if kind in ['Deployment', 'Pod', 'StatefulSet', 'DaemonSet']:
             spec = doc.get('spec') or {}
             template = spec.get('template') or {} if kind != 'Pod' else doc
             t_spec = template.get('spec') or {}
             containers = t_spec.get('containers') or []
+
+            # 1. Automounted Tokens (Now safely inside the Kind check)
+            if t_spec.get('automountServiceAccountToken') is not False:
+                findings.append({
+                    "severity": "🟡 WARN",
+                    "code": "SEC_TOKEN_MOUNT",
+                    "msg": f"🛡️ Best Practice: {kind} '{name}' automounts ServiceAccount tokens. Set 'automountServiceAccountToken: false' if API access isn't needed."
+                })
             
+            # 2. Privileged Mode
             for c in containers:
                 if c.get('securityContext', {}).get('privileged'):
                     findings.append({
@@ -122,7 +131,7 @@ class Shield:
         findings = []
         kind = resource.get("kind")
         name = resource.get('metadata', {}).get('name', 'unknown')
-        rules = resource.get("rules", [])
+        rules = resource.get("rules") or resource.get("spec", {}).get("rules", [])
     
         if kind in ["Role", "ClusterRole"]:
             for rule in rules:
@@ -148,9 +157,10 @@ class Shield:
 
     def audit_hpa(self, hpa_doc: dict, workload_docs: list) -> list:
         """
-        Validates HPA logic against targeted workloads.
+        Validates HPA logic against targeted workloads and identifies missing resource requests.
         """
         findings = []
+
         if hpa_doc.get('kind') != 'HorizontalPodAutoscaler':
             return findings
 
@@ -158,7 +168,7 @@ class Shield:
         target_ref = spec.get('scaleTargetRef') or {}
         target_name = target_ref.get('name')
         
-        # Extract resource metrics to check
+        # 1. Extract resource metrics the HPA is trying to scale on
         resource_checks = []
         if spec.get('targetCPUUtilizationPercentage'):
             resource_checks.append('cpu')
@@ -174,8 +184,15 @@ class Shield:
         if not resource_checks:
             return findings
 
-        # Find the target workload (Deployment/StatefulSet) in the bundle
-        target_workload = next((w for w in workload_docs if w.get('metadata', {}).get('name') == target_name), None)
+        # Extract HPA namespace (defaulting to 'default')
+        hpa_ns = hpa_doc.get('metadata', {}).get('namespace', 'default')
+        
+        # Match both Name AND Namespace
+        target_workload = next((
+            w for w in workload_docs 
+            if w.get('metadata', {}).get('name') == target_name 
+            and w.get('metadata', {}).get('namespace', 'default') == hpa_ns
+        ), None)
         
         if target_workload:
             kind = target_workload.get('kind')
@@ -184,15 +201,24 @@ class Shield:
             p_spec = pod_template.get('spec') or {}
             containers = p_spec.get('containers') or []
             
+            # Use the spec line as a fallback for the line number
+            fallback_line = self.get_line(target_workload, 'spec')
+
             for res_to_check in set(resource_checks):
                 for c in containers:
                     res_config = c.get('resources') or {}
                     requests = res_config.get('requests') or {}
+                    
                     if res_to_check not in requests:
+                        # 3. Identify the specific container line for the finding
+                        container_line = self.get_line(c) or fallback_line
+                        
                         findings.append({
                             "severity": "🔴 HIGH",
                             "code": "HPA_MISSING_REQ",
-                            "msg": f"📈 HPA Logic Error: Scales on {res_to_check}, but '{target_name}' lacks {res_to_check} requests."
+                            "msg": f"📈 HPA Logic Error: Scales on {res_to_check}, but '{target_name}' container '{c.get('name')}' lacks {res_to_check} requests.",
+                            "line": container_line
                         })
         
         return findings
+    
