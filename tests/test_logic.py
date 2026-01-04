@@ -1,26 +1,35 @@
 import subprocess
 import sys
+import os
 
 def test_ghost_service_detection():
-    # We run the module directly. Since we installed it with 'pip install .',
-    # Python will find it in the official site-packages automatically.
+    # We scan the entire SAMPLES directory to give Synapse context
+    # so it can see the mismatch between services and deployments.
+    sample_dir = "tests/samples/"
+    
     result = subprocess.run(
-        [sys.executable, "-m", "kubecuro.main", "scan", "tests/samples/ghost_service_error.yaml"],
+        [sys.executable, "-m", "kubecuro.main", "scan", sample_dir],
         capture_output=True,
         text=True
     )
 
-    # Useful for debugging if it fails
-    if result.returncode != 0:
-        print(result.stdout)
-        print(result.stderr)
+    # Log output to GitHub Actions console if the test fails
+    print(f"STDOUT: {result.stdout}")
+    if result.stderr:
+        print(f"STDERR: {result.stderr}")
 
+    # Check for the error code SYN-001 (Ghost Service)
     assert "SYN-001" in result.stdout
 
 def test_healthy_connection():
+    # Scan only the valid file to ensure no false positives
+    target = "tests/samples/valid_connection.yaml"
+    
     result = subprocess.run(
-        [sys.executable, "-m", "kubecuro.main", "scan", "tests/samples/valid_connection.yaml"],
+        [sys.executable, "-m", "kubecuro.main", "scan", target],
         capture_output=True,
         text=True
     )
+    
+    # We should NOT see the Ghost Service code here
     assert "SYN-001" not in result.stdout
