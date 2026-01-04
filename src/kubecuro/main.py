@@ -235,26 +235,25 @@ def run():
     subparsers.add_parser("checklist")
     subparsers.add_parser("version")
     
+    # 1. Define 'explain'
     explain_p = subparsers.add_parser("explain")
-    resource_arg = explain_p.add_argument(
+    explain_p.add_argument(
         "resource", 
         nargs="?", 
+        choices=list(EXPLAIN_CATALOG.keys()),
         help="Resource keyword (hpa, rbac, etc.) or path to a YAML file"
     )
 
-    # 1. This tells the shell what to suggest on TAB
-    resource_arg.completer = lambda prefix, **kwargs: list(EXPLAIN_CATALOG.keys()) + FilesCompleter()("__call__", prefix)
-    
-    # 2. This is the SECRET SAUCE: Tell argcomplete to ignore the fact 
-    # that it might be a file so it doesn't default to local file-only mode.
-    # Add this line:
-    argcomplete.autocomplete(parser, validator=lambda sig, val: True)
-    
+    # 2. Define 'completion'
     subparsers.add_parser("completion").add_argument("shell", choices=["bash", "zsh"])
 
-    argcomplete.autocomplete(parser)
-    args, unknown = parser.parse_known_args()
+    # 3. SINGLE Autocomplete call with the validator 
+    # This validator=lambda... is the secret that allows BOTH choices AND files
+    argcomplete.autocomplete(parser, validator=lambda sig, val: True)
 
+    # 4. Finally, parse the arguments
+    args, unknown = parser.parse_known_args()
+    
     # --- 1. PRIORITY ROUTING ---
     if args.command == "completion":
         if args.shell == "bash":
