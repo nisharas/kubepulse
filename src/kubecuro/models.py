@@ -7,9 +7,9 @@ class AuditIssue:
     severity: str  
     file: str      
     message: str   
-    source: str    
-    fix: str = "Manual Review Required"  # Default if no auto-fix exists
-    line_number: Optional[int] = None 
+    source: str = "Unknown" # Added default to prevent init errors
+    fix: str = "Manual Review Required"
+    line: Optional[int] = None # Renamed from line_number to line
 
     def __post_init__(self):
         # Ensure consistent UI presentation
@@ -29,5 +29,5 @@ class AuditIssue:
             "message": self.message,
             "fix": self.fix,
             "source": self.source,
-            "line": self.line_number
+            "line": self.line
         }
