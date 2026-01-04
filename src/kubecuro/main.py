@@ -48,60 +48,58 @@ EXPLAIN_CATALOG = {
     "rbac": """
 # 🔑 RBAC & Security Audit
 KubeCuro audits **Access Control Logic**:
-1. **RBAC_WILD**: Flags use of global wildcards (`*`) in resources/verbs. Critical security risk.
-2. **RBAC_SECRET**: Flags roles allowing Secret access (credential exposure).
-3. **Binding Integrity**: Ensures RoleBindings point to existing Roles/Subjects.
-    """,
+1. **RBAC_WILD**: Flags use of global wildcards (*) in resources and verbs.
+2. **RBAC_SECRET**: Flags roles that allow reading Secrets.
+3. **Privilege Escalation**: Detects if a role allows a user to grant themselves more power.
+""",
     "hpa": """
 # 📈 HPA Scaling Audit
 KubeCuro validates the **Scaling Foundation**:
-1. **HPA_MISSING_REQ**: Scaling requires `resources.requests` in the target Deployment.
-2. **Target Ref**: Ensures the HPA points to a Deployment/StatefulSet present in the manifests.
-    """,
+1. **HPA_MISSING_REQ**: Scaling on CPU/Memory requires resources.requests to be defined.
+2. **Target Ref**: Ensures the HPA is pointing to a Deployment that actually exists.
+""",
     "service": """
 # 🔗 Service Logic Audit
 KubeCuro verifies the **Connectivity Chain**:
-1. **Selector Match**: Validates that selectors match at least one workload.
-2. **Port Alignment**: Ensures `targetPort` matches a `containerPort` in the Pod.
-3. **Orphan Check**: Warns if a Service exists without any backing workload.
-    """,
+1. **Selector Match**: Validates that spec.selector labels match a Deployment.
+2. **Port Alignment**: Ensures targetPort matches a containerPort.
+""",
     "deployment": """
 # 🚀 Deployment Logic Audit
 KubeCuro audits the **Rollout Safety**:
-1. **Tag Validation**: Flags images using `:latest` or no tag.
-2. **Strategy Alignment**: Checks rollingUpdate parameter logic.
-3. **Immutability**: Ensures selector matchLabels match template labels.
-    """,
+1. **Tag Validation**: Flags images using :latest or no tag.
+2. **Strategy Alignment**: Checks if rollingUpdate parameters are logical.
+""",
     "ingress": """
 # 🌐 Ingress Logic Audit
 KubeCuro validates the **Traffic Path**:
-1. **Backend Mapping**: Ensures the referenced `serviceName` exists.
-2. **Port Consistency**: Validates `servicePort` matches the target Service.
-    """,
+1. **Backend Mapping**: Ensures the referenced serviceName exists.
+2. **Port Consistency**: Validates that the servicePort matches the target Service.
+""",
     "storage": """
 # 📂 Storage & Persistent Volume Audit
 KubeCuro audits **Persistence Logic**:
-1. **PVC Match**: Ensures requested Claims are defined.
-2. **Access Modes**: Warns on RWO/RWX logic contradictions.
-    """,
+1. **PVC Match**: Ensures PersistentVolumeClaims requested by Pods are defined.
+2. **StorageClass Alignment**: Validates that the storageClassName exists.
+""",
     "networkpolicy": """
 # 🛡️ NetworkPolicy Logic Audit
 KubeCuro audits **Isolation Rules**:
-1. **Targeting**: Flags unintentional "Allow All" empty selectors.
-2. **Namespace Check**: Validates labels against known namespaces.
-    """,
+1. **Targeting**: Warns if an empty podSelector is targeting all pods.
+2. **Namespace Check**: Validates namespaceSelector labels.
+""",
     "probes": """
 # 🩺 Health Probe Logic Audit
 KubeCuro audits the **Self-Healing** parameters:
-1. **Port Mapping**: Ensures probe ports are defined in the container.
-2. **Timing Logic**: Flags probes where `timeout` > `period`.
-    """,
+1. **Port Mapping**: Ensures httpGet.port or tcpSocket.port is defined.
+2. **Timing Logic**: Flags probes where timeoutSeconds > periodSeconds.
+""",
     "scheduling": """
 # 🏗️ Scheduling & Affinity Audit
 KubeCuro checks for **Placement Contradictions**:
-1. **NodeSelector**: Verifies selectors aren't mutually exclusive.
-2. **Tolerations**: Ensures correct Operator usage.
-    """
+1. **NodeSelector**: Verifies that selectors are not mutually exclusive.
+2. **Tolerations**: Ensures tolerations follow the correct Operator logic.
+"""
 }
 
 def show_help():
