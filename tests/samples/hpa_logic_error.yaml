@@ -1,24 +1,30 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: resource-starved-app
+  name: scanner-target-app # <--- NAME A
 spec:
+  selector:
+    matchLabels:
+      app: web
   template:
+    metadata:
+      labels:
+        app: web
     spec:
       containers:
-      - name: web
-        image: nginx
-        # MISSING: resources.requests.cpu
+      - name: nginx
+        image: nginx:latest
+        # No "resources:" block here. This is the "Bait" for the error.
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: faulty-hpa
+  name: web-hpa
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: resource-starved-app
+    name: scanner-target-app # <--- MUST MATCH NAME A
   minReplicas: 1
   maxReplicas: 10
   metrics:
