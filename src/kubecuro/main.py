@@ -444,10 +444,9 @@ def run():
                     elif sys.stdin.isatty():
                         try:
                             # Final fail-safe against prompt hang
-                            if not args.dry_run:
-                                confirm = console.input(f"[bold cyan]Apply this fix to {fname}? (y/N): [/bold cyan]")
-                                if confirm.lower() == 'y':
-                                    do_fix = True
+                            confirm = console.input(f"[bold cyan]Apply this fix to {fname}? (y/N): [/bold cyan]")
+                            if confirm.lower() == 'y':
+                                do_fix = True
                         except (EOFError, KeyboardInterrupt):
                             do_fix = False # Gracefully skip on Ctrl+C or pipe end
                     
@@ -463,7 +462,7 @@ def run():
                             code="FIXED", severity="🟡 SKIPPED", file=fname, 
                             message="[bold yellow]SKIPPED:[/bold yellow] Fix declined.", source="Healer"
                         ))
-                    continue # SHORT-CIRCUIT to next file
+                    continue # SHORT-CIRCUIT to next file after handling fix/skip
 
                 else:
                     # SCAN MODE (Read-only)
@@ -478,6 +477,7 @@ def run():
                 findings = shield.scan(doc, all_docs=syn.all_docs)
                 for finding in findings:
                     f_code = str(finding['code']).upper()
+                    # Check if a fix was already registered to avoid redundant criticals
                     is_fix_registered = any(i.file == fname and i.code == "FIXED" and "FIXED" in i.severity for i in all_issues)
                     
                     if command == "scan" or (command == "fix" and not is_fix_registered):
@@ -508,7 +508,12 @@ def run():
         res_table.add_column("Message")
         
         for i in all_issues:
-            c = "red" if "🔴" in i.severity else "orange3" if "🟠" in i.severity else "green"
+            # Color logic based on emoji/severity string
+            if "🔴" in i.severity: c = "red"
+            elif "🟡" in i.severity: c = "yellow"
+            elif "🟢" in i.severity: c = "green"
+            else: c = "white"
+
             line_info = f":{i.line}" if hasattr(i, 'line') and i.line else ""
             loc = f"{i.file}{line_info}"
             res_table.add_row(f"[{c}]{i.severity}[/{c}]", i.code, loc, i.message)
@@ -518,16 +523,18 @@ def run():
 
         console.print(res_table)
 
+        # Summary Counters
         ghosts    = sum(1 for i in all_issues if str(i.code).upper() == 'GHOST')
         hpa_gaps  = sum(1 for i in all_issues if str(i.code).upper() in ['HPA_LOGIC', 'HPA_MISSING_REQ'])
         security  = sum(1 for i in all_issues if any(x in str(i.code).upper() for x in ['RBAC', 'PRIVILEGED', 'SECRET']))
         api_rot   = sum(1 for i in all_issues if str(i.code).upper() == 'API_DEPRECATED')
         repairs   = sum(1 for i in all_issues if str(i.code).upper() == 'FIXED' and "FIXED" in i.severity)
 
-        all_sev = str([i.severity for i in all_issues])
-        if security > 0 or ghosts > 0 or "🔴" in all_sev:
+        # UI Border color logic
+        all_sev_str = "".join([i.severity for i in all_issues])
+        if security > 0 or ghosts > 0 or "🔴" in all_sev_str:
             border_col = "red"
-        elif hpa_gaps > 0 or "🟠" in all_sev:
+        elif hpa_gaps > 0 or "🟡" in all_sev_str:
             border_col = "yellow"
         else:
             border_col = "green"
@@ -536,6 +543,7 @@ def run():
         unhealthy_files = set()
         for i in all_issues:
             if "🔴" in i.severity:
+                # If it's critical but we fixed it, don't count the file as unhealthy
                 was_fixed = any(fix.file == i.file and fix.code == "FIXED" and "FIXED" in fix.severity for fix in all_issues)
                 if not was_fixed: unhealthy_files.add(i.file)
             if i.code in ["GHOST", "HPA_LOGIC", "HPA_MISSING_REQ"]:
@@ -582,6 +590,9 @@ if __name__ == "__main__":
     try:
         run()
     except KeyboardInterrupt:
+        # Final cleanup for manual interrupts
+        console.print("\n[bold red]Aborted by user.[/bold red]")
         sys.exit(0)
     except Exception as e:
-        log.exception(f"FATAL ERROR: {e}"); sys.exit(1)
+        log.exception(f"FATAL ERROR: {e}")
+        sys.exit(1)
