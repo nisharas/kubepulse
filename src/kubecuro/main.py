@@ -444,7 +444,8 @@ def run():
             # Shield scan using the synced synapse docs
             current_docs = [d for d in syn.all_docs if d.get('_origin_file') == f]
             for doc in current_docs:
-                for finding in shield.scan(doc, all_docs=syn.all_docs):
+                findings = shield.scan(doc, all_docs=syn.all_docs)
+                for finding in findings:
                     # We still add the finding, but we can change the message 
                     # for the UI if a fix is already pending.
                     is_already_fixed = any(i.file == fname and i.code == "FIXED" for i in all_issues)
