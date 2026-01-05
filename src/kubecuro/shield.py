@@ -36,13 +36,15 @@ class Shield:
     def get_line(self, doc, key=None):
         """Helper to extract line number from ruamel.yaml-parsed dict."""
         try:
+            if doc is None:
+                return 1
             if not hasattr(doc, 'lc'):
                 return 1
-            if key and key in doc.lc.data:
+            if key and hasattr(doc.lc, 'data') and key in doc.lc.data:
                 # Target specific key (e.g., 'apiVersion' or 'spec')
                 return doc.lc.data[key][0] + 1
             # Fallback to starting line of the document
-            return doc.lc.line + 1
+            return getattr(doc.lc, 'line', 0) + 1
         except Exception:
             return 1
 
@@ -68,7 +70,7 @@ class Shield:
 
         # --- Line Number Attachment & Consistency Check ---
         for f in raw_findings:
-            if 'line' not in f or f['line'] <= 0:
+            if 'line' not in f or f['line'] is None or f['line'] <= 0:
                 f['line'] = base_line
             findings.append(f)
             
@@ -78,13 +80,14 @@ class Shield:
         """Checks if Ingress backends point to valid Services and Ports."""
         findings = []
         if doc.get('kind') == 'Ingress':
-            ingress_name = doc.get('metadata', {}).get('name')
+            ingress_name = doc.get('metadata', {}).get('name', 'unknown')
             ingress_ns = doc.get('metadata', {}).get('namespace', 'default')
-            spec = doc.get('spec', {})
+            spec = doc.get('spec', {}) or {}
             
             for rule in spec.get('rules', []):
-                for path in rule.get('http', {}).get('paths', []):
-                    backend = path.get('backend', {})
+                http = rule.get('http', {}) or {}
+                for path in http.get('paths', []):
+                    backend = path.get('backend', {}) or {}
                     svc_node = backend.get('service', backend) 
                     target_svc = svc_node.get('name') or backend.get('serviceName')
                     
@@ -98,7 +101,7 @@ class Shield:
                                        and d.get('metadata', {}).get('namespace', 'default') == ingress_ns), None)
 
                     if matched_svc:
-                        svc_ports = [p.get('port') for p in matched_svc.get('spec', {}).get('ports', [])]
+                        svc_ports = [p.get('port') for p in matched_svc.get('spec', {}).get('ports', []) if p.get('port')]
                         if target_port and target_port not in svc_ports:
                             findings.append({
                                 "code": "INGRESS_PORT_MISMATCH",
@@ -189,8 +192,8 @@ class Shield:
         if hpa_doc.get('kind') != 'HorizontalPodAutoscaler':
             return findings
 
-        spec = hpa_doc.get('spec', {})
-        target_ref = spec.get('scaleTargetRef', {})
+        spec = hpa_doc.get('spec', {}) or {}
+        target_ref = spec.get('scaleTargetRef', {}) or {}
         target_name = target_ref.get('name')
         hpa_ns = hpa_doc.get('metadata', {}).get('namespace', 'default')
         
@@ -213,7 +216,8 @@ class Shield:
             containers = target_workload.get('spec', {}).get('template', {}).get('spec', {}).get('containers', [])
             for res in set(resource_checks):
                 for c in containers:
-                    if res not in c.get('resources', {}).get('requests', {}):
+                    requests = c.get('resources', {}).get('requests', {}) or {}
+                    if res not in requests:
                         findings.append({
                             "severity": "🔴 HIGH",
                             "code": "HPA_MISSING_REQ",
