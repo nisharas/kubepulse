@@ -192,7 +192,6 @@ def interactive_explain(target_file, issues):
     ))
 
     # --- 1. Proposed Fix (The Diff) ---
-    # FIX: Handling tuple return (fixed_content, triggered_codes)
     fixed_code, _ = linter_engine(target_file, dry_run=True, return_content=True)
 
     if fixed_code and fixed_code != original_code:
@@ -386,11 +385,8 @@ def run():
             fname = os.path.basename(f)
             syn.scan_file(f) 
             
-            effective_dry = True if command == "scan" else args.dry_run
-            
-            # FIX: Properly unpack the (fixed_content, triggered_codes) tuple
+            # Unpack the (fixed_content, triggered_codes) tuple
             fixed_content, triggered_codes = linter_engine(f, dry_run=True, return_content=True)
-            msg = None
 
             with open(f, 'r') as original:
                 original_content = original.read()
@@ -405,53 +401,73 @@ def run():
                     source="Healer"
                 ))
 
+            # --- THE FIX LOGIC (LOOP PREVENTION) ---
             if fixed_content and fixed_content != original_content:
-                if command == "fix" and not args.dry_run:
-                    console.print(f"\n[bold yellow]🛠️ Proposed fix for {fname}:[/bold yellow]")
-                    diff = difflib.unified_diff(
-                        original_content.splitlines(),
-                        fixed_content.splitlines(),
-                        fromfile="current", tofile="proposed", lineterm=""
-                    )
-                    console.print(Syntax("\n".join(list(diff)), "diff", theme="monokai"))
-                    
-                    do_fix = False
-                    if getattr(args, 'yes', False):
-                        do_fix = True
-                    elif sys.stdin.isatty():
-                        try:
-                            confirm = console.input(f"[bold cyan]Apply this fix to {fname}? (y/N): [/bold cyan]")
-                            if confirm.lower() == 'y':
-                                do_fix = True
-                        except EOFError:
-                            do_fix = False
-                    
-                    if do_fix:
-                        with open(f, 'w') as out_f:
-                            out_f.write(fixed_content)
-                        msg = "[bold green]FIXED:[/bold green] Applied repairs."
+                if command == "fix":
+                    if args.dry_run:
+                        # DRY RUN: Display diff and record as WOULD FIX, then move to next file
+                        console.print(f"\n[bold cyan]🔍 DRY RUN: Proposed changes for {fname}:[/bold cyan]")
+                        diff = difflib.unified_diff(
+                            original_content.splitlines(),
+                            fixed_content.splitlines(),
+                            fromfile="current", tofile="proposed", lineterm=""
+                        )
+                        console.print(Syntax("\n".join(list(diff)), "diff", theme="monokai"))
+                        
+                        all_issues.append(AuditIssue(
+                            code="FIXED", 
+                            severity="🟡 WOULD FIX",
+                            file=fname, 
+                            message="[bold green]API UPGRADE:[/bold green] networking.k8s.io/v1beta1 → v1",
+                            source="Healer"
+                        ))
                     else:
-                        msg = "[bold yellow]SKIPPED:[/bold yellow] Fix declined."
+                        # ACTUAL FIX: Prompt for input
+                        console.print(f"\n[bold yellow]🛠️ Proposed fix for {fname}:[/bold yellow]")
+                        diff = difflib.unified_diff(
+                            original_content.splitlines(),
+                            fixed_content.splitlines(),
+                            fromfile="current", tofile="proposed", lineterm=""
+                        )
+                        console.print(Syntax("\n".join(list(diff)), "diff", theme="monokai"))
+                        
+                        do_fix = False
+                        if getattr(args, 'yes', False):
+                            do_fix = True
+                        elif sys.stdin.isatty():
+                            try:
+                                confirm = console.input(f"[bold cyan]Apply this fix to {fname}? (y/N): [/bold cyan]")
+                                if confirm.lower() == 'y':
+                                    do_fix = True
+                            except EOFError:
+                                do_fix = False
+                        
+                        if do_fix:
+                            with open(f, 'w') as out_f:
+                                out_f.write(fixed_content)
+                            all_issues.append(AuditIssue(
+                                code="FIXED", severity="🟢 FIXED", file=fname, 
+                                message="[bold green]FIXED:[/bold green] Applied repairs.", source="Healer"
+                            ))
+                        else:
+                            all_issues.append(AuditIssue(
+                                code="FIXED", severity="🟡 SKIPPED", file=fname, 
+                                message="[bold yellow]SKIPPED:[/bold yellow] Fix declined.", source="Healer"
+                            ))
                 else:
-                    msg = "[bold green]API UPGRADE:[/bold green] networking.k8s.io/v1beta1 → v1"
-            
-            if msg:
-                all_issues.append(AuditIssue(
-                    code="FIXED", 
-                    severity="🟢 FIXED" if command == "fix" and not effective_dry else "🟡 WOULD FIX",
-                    file=fname, 
-                    message=msg,
-                    source="Healer"
-                ))
+                    # SCAN MODE: Just report that a fix is available
+                    all_issues.append(AuditIssue(
+                        code="FIXED", severity="🟡 WOULD FIX", file=fname, 
+                        message="[bold green]API UPGRADE:[/bold green] networking.k8s.io/v1beta1 → v1", source="Healer"
+                    ))
 
             # Shield scan
             current_docs = [d for d in syn.all_docs if d.get('_origin_file') == f]
             for doc in current_docs:
                 findings = shield.scan(doc, all_docs=syn.all_docs)
                 for finding in findings:
-                    # Logic: Avoid double-reporting if Healer already flagged it, but satisfy test requirements
                     f_code = str(finding['code']).upper()
-                    is_fix_registered = any(i.file == fname and i.code == "FIXED" for i in all_issues)
+                    is_fix_registered = any(i.file == fname and i.code == "FIXED" and "FIXED" in i.severity for i in all_issues)
                     
                     if command == "scan" or (command == "fix" and not is_fix_registered):
                         all_issues.append(AuditIssue(
@@ -495,7 +511,7 @@ def run():
         hpa_gaps  = sum(1 for i in all_issues if str(i.code).upper() in ['HPA_LOGIC', 'HPA_MISSING_REQ'])
         security  = sum(1 for i in all_issues if any(x in str(i.code).upper() for x in ['RBAC', 'PRIVILEGED', 'SECRET']))
         api_rot   = sum(1 for i in all_issues if str(i.code).upper() == 'API_DEPRECATED')
-        repairs   = sum(1 for i in all_issues if str(i.code).upper() == 'FIXED')
+        repairs   = sum(1 for i in all_issues if str(i.code).upper() == 'FIXED' and "FIXED" in i.severity)
 
         all_sev = str([i.severity for i in all_issues])
         if security > 0 or ghosts > 0 or "🔴" in all_sev:
@@ -509,7 +525,7 @@ def run():
         unhealthy_files = set()
         for i in all_issues:
             if "🔴" in i.severity:
-                was_fixed = any(fix.file == i.file and fix.code == "FIXED" for fix in all_issues)
+                was_fixed = any(fix.file == i.file and fix.code == "FIXED" and "FIXED" in fix.severity for fix in all_issues)
                 if not was_fixed: unhealthy_files.add(i.file)
             if i.code in ["GHOST", "HPA_LOGIC", "HPA_MISSING_REQ"]:
                 unhealthy_files.add(i.file)
