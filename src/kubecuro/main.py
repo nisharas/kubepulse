@@ -378,7 +378,7 @@ def run():
     
     # Snapshot files to avoid loop if directory content changes
     if os.path.isdir(target):
-        files = [os.path.join(target, f) for f in os.listdir(target) if f.endswith(('.yaml', '.yml'))]
+        files = sorted([os.path.join(target, f) for f in os.listdir(target) if f.endswith(('.yaml', '.yml'))])
     else:
         files = [target]
     
@@ -423,10 +423,10 @@ def run():
                             code="FIXED", 
                             severity="🟡 WOULD FIX",
                             file=fname, 
-                            message="[bold green]API UPGRADE:[/bold green] networking.k8s.io/v1beta1 → v1",
+                            message="[bold green]API UPGRADE:[/bold green] repairs available",
                             source="Healer"
                         ))
-                        continue # Skip Shield scan for this file in dry-run mode
+                        continue # SHORT-CIRCUIT: Do not run Shield/Prompts for this file
 
                     else:
                         # ACTUAL FIX: Prompt for input
@@ -439,10 +439,11 @@ def run():
                         console.print(Syntax("\n".join(list(diff)), "diff", theme="monokai"))
                         
                         do_fix = False
-                        if getattr(args, 'yes', False):
+                        if args.yes:
                             do_fix = True
                         elif sys.stdin.isatty():
                             try:
+                                # Logic Fix: Default to No to be safe, only apply on 'y'
                                 confirm = console.input(f"[bold cyan]Apply this fix to {fname}? (y/N): [/bold cyan]")
                                 if confirm.lower() == 'y':
                                     do_fix = True
@@ -461,13 +462,13 @@ def run():
                                 code="FIXED", severity="🟡 SKIPPED", file=fname, 
                                 message="[bold yellow]SKIPPED:[/bold yellow] Fix declined.", source="Healer"
                             ))
-                        continue # Skip Shield scan after fixing
+                        continue # SHORT-CIRCUIT: Do not run Shield after fixing to avoid duplicate/stale alerts
 
                 else:
                     # SCAN MODE: Just report that a fix is available
                     all_issues.append(AuditIssue(
                         code="FIXED", severity="🟡 WOULD FIX", file=fname, 
-                        message="[bold green]API UPGRADE:[/bold green] networking.k8s.io/v1beta1 → v1", source="Healer"
+                        message="[bold green]API UPGRADE:[/bold green] repairs available", source="Healer"
                     ))
 
             # Shield scan - Only runs if we didn't 'continue' above
