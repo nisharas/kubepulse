@@ -409,7 +409,7 @@ def run():
             # --- THE FIX LOGIC (LOOP PREVENTION) ---
             if fixed_content and fixed_content != original_content:
                 if command == "fix":
-                    # --- DRY RUN CHECK (MUST BE FIRST) ---
+                    # --- 1. HANDLE DRY RUN (PRIORITY EXIT) ---
                     if args.dry_run:
                         console.print(f"\n[bold cyan]🔍 DRY RUN: Proposed changes for {fname}:[/bold cyan]")
                         diff = difflib.unified_diff(
@@ -426,10 +426,10 @@ def run():
                             message="[bold green]API UPGRADE:[/bold green] repairs available",
                             source="Healer"
                         ))
-                        # ABSOLUTE SHORT-CIRCUIT FOR DRY RUN
+                        # ABSOLUTE SHORT-CIRCUIT: Skip prompt logic entirely
                         continue 
 
-                    # --- ACTUAL FIX LOGIC ---
+                    # --- 2. HANDLE ACTUAL FIX ---
                     console.print(f"\n[bold yellow]🛠️ Proposed fix for {fname}:[/bold yellow]")
                     diff = difflib.unified_diff(
                         original_content.splitlines(),
@@ -443,13 +443,13 @@ def run():
                         do_fix = True
                     elif sys.stdin.isatty():
                         try:
-                            # DOUBLE CHECK: Are we sure we aren't in dry run?
+                            # Final fail-safe against prompt hang
                             if not args.dry_run:
                                 confirm = console.input(f"[bold cyan]Apply this fix to {fname}? (y/N): [/bold cyan]")
                                 if confirm.lower() == 'y':
                                     do_fix = True
-                        except EOFError:
-                            do_fix = False
+                        except (EOFError, KeyboardInterrupt):
+                            do_fix = False # Gracefully skip on Ctrl+C or pipe end
                     
                     if do_fix:
                         with open(f, 'w') as out_f:
@@ -463,10 +463,10 @@ def run():
                             code="FIXED", severity="🟡 SKIPPED", file=fname, 
                             message="[bold yellow]SKIPPED:[/bold yellow] Fix declined.", source="Healer"
                         ))
-                    continue # SHORT-CIRCUIT TO NEXT FILE
+                    continue # SHORT-CIRCUIT to next file
 
                 else:
-                    # SCAN MODE
+                    # SCAN MODE (Read-only)
                     all_issues.append(AuditIssue(
                         code="FIXED", severity="🟡 WOULD FIX", file=fname, 
                         message="[bold green]API UPGRADE:[/bold green] repairs available", source="Healer"
