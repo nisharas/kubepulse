@@ -445,12 +445,15 @@ def run():
             current_docs = [d for d in syn.all_docs if d.get('_origin_file') == f]
             for doc in current_docs:
                 for finding in shield.scan(doc, all_docs=syn.all_docs):
-                    if command == "fix" and finding['code'] == "API_DEPRECATED":
-                        if any(i.file == fname and i.code == "FIXED" for i in all_issues):
-                            continue
+                    # We still add the finding, but we can change the message 
+                    # for the UI if a fix is already pending.
+                    is_already_fixed = any(i.file == fname and i.code == "FIXED" for i in all_issues)
+                    
+                    if command == "fix" and finding['code'] == "API_DEPRECATED" and is_already_fixed:
+                        continue
                     
                     all_issues.append(AuditIssue(
-                        code=str(finding['code']),
+                        code=str(finding['code']),  # <--- Tests need this!
                         severity=str(finding['severity']),
                         file=fname,
                         message=str(finding['msg']),
