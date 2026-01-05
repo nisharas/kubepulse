@@ -142,7 +142,7 @@ def show_help():
     cmd_table.add_row("  [bold cyan]fix[/bold cyan]", "Automatically repair syntax and API deprecations")
     cmd_table.add_row("  [bold cyan]explain[/bold cyan]", "Describe logic used for a resource (e.g., explain hpa)")
     cmd_table.add_row("  [bold cyan]checklist[/bold cyan]", "Show all active logic rules")
-    cmd_table.add_row("  [bold cyan]completion[/bold cyan]", "Generate shell completion scripts (bash/zsh)")
+    cmd_table.add_row("  [bold cyan]completion[/bold cyan]", "Setup tab-autocompletion for your shell (bash/zsh)")
     help_console.print(cmd_table)
 
     help_console.print("\n[bold yellow]Options:[/bold yellow]")
@@ -298,9 +298,18 @@ def run():
     # --- 1. PRIORITY ROUTING ---
     if args.command == "completion":
         if args.shell == "bash":
-            print('complete -o default -o nospace -C "kubecuro" "kubecuro"')
-        else:
-            print('#compdef kubecuro\ntype compdef >/dev/null 2>&1 || alias compdef=: \ncomplete -o default -o nospace -C "kubecuro" "kubecuro"')
+            # If the user is just running this in the terminal, give them a hint
+            if sys.stdout.isatty() and not os.environ.get("KUBECURO_COMPLETION_SKIP_UI"):
+                console.print(Panel(
+                    "[bold yellow]Bash Completion Detected[/bold yellow]\n\n"
+                    "To enable autocompletion, run:\n"
+                    "[bold cyan]source <(kubecuro completion bash)[/bold cyan]\n\n"
+                    "To make it permanent, add it to your ~/.bashrc",
+                    title="Setup Guide"
+                ))
+            else:
+                # This is what actually gets 'sourced' by the shell
+                print('complete -o default -o nospace -C "kubecuro" "kubecuro"')
         return
 
     if args.help or (not args.command and not args.version and not unknown):
