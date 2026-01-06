@@ -69,7 +69,7 @@ Thanks to the static build process, KubeCuro is a single, 15MB binary.
       
 4. Smart Tab-Completion: Full support for Bash and Zsh with an automated installer.
 
-5. Explain Engine: Direct access to K8s logic best practices via kubecuro explain.
+5. Explain Engine: Direct access to K8s logic best practices via `kubecuro explain`.
 ## 🛠️ The Three Pillars of KubeCuro
 | Engine | Purpose | Real-World Value |
 | --- | --- | --- |
