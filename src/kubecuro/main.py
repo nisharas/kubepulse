@@ -119,7 +119,7 @@ KubeCuro checks for **Placement Contradictions**:
 def show_help():
     help_console = Console()
     logo_ascii = r"""
- ██╗  ██╗██╗   ██╗██████╗ ███████╗ ██████╗██╗   ██╗██████╗  ██████╗ 
+ ██╗  ██╗██║   ██╗██████╗ ███████╗ ██████╗██║   ██╗██████╗  ██████╗ 
  ██║ ██╔╝██║   ██║██╔══██╗██╔════╝██╔════╝██║   ██║██╔══██╗██╔═══██╗
  █████╔╝ ██║   ██║██████╔╝█████╗  ██║     ██║   ██║██████╔╝██║   ██║
  ██╔═██╗ ██║   ██║██╔══██╗██╔══╝  ██║     ██║   ██║██╔══██╗██║   ██║
@@ -399,10 +399,16 @@ def run():
 
             # Record deprecated/trigger codes from Healer
             for t_code in triggered_codes:
+                # SPLIT CODE AND LINE NUMBER
+                parts = str(t_code).split(":")
+                code_str = parts[0].upper()
+                line_val = int(parts[1]) if len(parts) > 1 else None
+
                 all_issues.append(AuditIssue(
-                    code=str(t_code).upper(),
-                    severity="🔴 CRITICAL" if "DEPRECATED" in str(t_code).upper() else "🟡 WARNING",
+                    code=code_str,
+                    severity="🔴 CRITICAL" if "DEPRECATED" in code_str else "🟡 WARNING",
                     file=fname,
+                    line=line_val,
                     message=f"Logic gap detected by Healer engine.",
                     source="Healer"
                 ))
