@@ -31,39 +31,56 @@ class Healer:
         self.detected_codes = set()
 
     def apply_security_patches(self, doc, kind, global_line_offset=0):
-        """Standard Security Hardening Logic."""
+        """Standard Security Hardening & Stability Patching."""
         if not isinstance(doc, dict): return
         
         # Target workload types
-        workloads = ['Deployment', 'Pod', 'StatefulSet', 'DaemonSet', 'Job']
-        if kind in workloads or kind == 'CronJob':
+        workloads = ['Deployment', 'Pod', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob']
+        if kind in workloads:
             spec = doc.get('spec', {})
             
-            # Handle standard nesting vs CronJob nesting
+            # 1. Navigation: Extract the Pod Spec (t_spec)
             if kind == 'CronJob':
-                template = spec.get('jobTemplate', {}).get('spec', {}).get('template', {})
+                # CronJob -> jobTemplate -> spec -> template -> spec
+                job_tmpl = spec.get('jobTemplate', {})
+                template = job_tmpl.get('spec', {}).get('template', {})
             else:
                 template = spec.get('template', {}) if kind != 'Pod' else doc
             
-            if isinstance(template, dict):
-                t_spec = template.get('spec')
-                if t_spec and isinstance(t_spec, dict):
-                    # 1. Automount ServiceAccount Token - NON-TECHNICAL FIX:
-                    # We no longer force this to False because it can break app connectivity.
-                    # We just flag it for the user to see.
-                    if t_spec.get('automountServiceAccountToken') is None:
-                        self.detected_codes.add(f"SEC_TOKEN_AUDIT:{global_line_offset}")
+            if not isinstance(template, dict): return
+            t_spec = template.get('spec')
+            if not t_spec or not isinstance(t_spec, dict): return
+
+            # 2. SEC_TOKEN_AUDIT: Flag it (Keep your current policy of not auto-fixing)
+            if t_spec.get('automountServiceAccountToken') is None:
+                self.detected_codes.add(f"SEC_TOKEN_AUDIT:{global_line_offset}")
+
+            # 3. Container-level fixes (OOM_RISK & PRIVILEGED)
+            containers = t_spec.get('containers', [])
+            if isinstance(containers, list):
+                for c in containers:
+                    if not isinstance(c, dict): continue
                     
-                    # 2. Privileged Escalation / Privileged Mode
-                    containers = t_spec.get('containers', [])
-                    if isinstance(containers, list):
-                        for c in containers:
-                            if not isinstance(c, dict): continue
-                            s_ctx = c.get('securityContext', {})
-                            if s_ctx and s_ctx.get('privileged') is True:
-                                # This is safe to auto-fix as 'privileged' is rarely required
-                                s_ctx['privileged'] = False
-                                self.detected_codes.add(f"SEC_PRIVILEGED:{global_line_offset}")
+                    # --- FIX: OOM_RISK (Missing Resource Limits) ---
+                    res = c.get('resources', {})
+                    if 'limits' not in res:
+                        # Initialize resources if totally missing
+                        if 'resources' not in c:
+                            c['resources'] = {}
+                        
+                        # Inject conservative default limits
+                        # We use ruamel-compatible dict insertion
+                        c['resources']['limits'] = {
+                            'cpu': '500m',
+                            'memory': '256Mi'
+                        }
+                        self.detected_codes.add(f"OOM_RISK:{global_line_offset}")
+
+                    # --- FIX: SEC_PRIVILEGED ---
+                    s_ctx = c.get('securityContext', {})
+                    if s_ctx and s_ctx.get('privileged') is True:
+                        s_ctx['privileged'] = False
+                        self.detected_codes.add(f"SEC_PRIVILEGED:{global_line_offset}")
 
     def heal_file(self, file_path, apply_fixes=True, dry_run=False, return_content=False):
         try:
