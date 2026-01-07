@@ -170,12 +170,7 @@ def show_help():
     
     help_console.print("\n[bold yellow]Usage:[/bold yellow]")
     help_console.print("  kubecuro [command] [file_or_dir] [options]")
-
-    help_console.print("\n  [dim]7. Record current issues as a baseline (Technical Debt):[/dim]")
-    help_console.print("      kubecuro baseline ./manifests/")
-    help_console.print("\n  [dim]8. View all issues, including suppressed ones:[/dim]")
-    help_console.print("      kubecuro scan ./manifests/ --all")
-    
+   
     help_console.print("\n[bold yellow]Main Commands:[/bold yellow]")
     cmd_table = Table(show_header=False, box=None, padding=(0, 2))
     cmd_table.add_row("  [bold cyan]scan[/bold cyan]", "Analyze manifests for logic errors (Read-only)")
@@ -206,6 +201,10 @@ def show_help():
     help_console.print("      kubecuro explain rbac")
     help_console.print("\n  [dim]6. Enable Autocomplete:[/dim]")
     help_console.print("       [bold cyan]source <(kubecuro completion bash)[/bold cyan]")
+    help_console.print("\n  [dim]7. Record current issues as a baseline (Technical Debt):[/dim]")
+    help_console.print("      kubecuro baseline ./manifests/")
+    help_console.print("\n  [dim]8. View all issues, including suppressed ones:[/dim]")
+    help_console.print("      kubecuro scan ./manifests/ --all")
     
     help_console.print("\n[italic white]Architecture: Static Binary / x86_64[/italic white]\n")
 
