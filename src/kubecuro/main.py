@@ -409,6 +409,31 @@ def run():
             fname = os.path.basename(f)
             syn.scan_file(f) 
             
+            # --- 3.1. RUN SHIELD FIRST (High-precision diagnostics) ---
+            current_docs = [d for d in syn.all_docs if d.get('_origin_file') == fname]
+            for doc in current_docs:
+                findings = shield.scan(doc, all_docs=syn.all_docs)
+                for finding in findings:
+                    f_code = str(finding['code']).upper()
+                    f_line = finding.get('line')
+
+                    if f"{fname}:{f_line}:{f_code}" in seen_identifiers:
+                        continue
+
+                    is_fix_registered = any(i.file == fname and i.code == "FIXED" and "FIXED" in i.severity for i in all_issues)
+                    
+                    if command == "scan" or (command == "fix" and not is_fix_registered):
+                        all_issues.append(AuditIssue(
+                            code=f_code, 
+                            severity=str(finding['severity']),
+                            file=fname,
+                            message=str(finding['msg']),
+                            source="Shield",
+                            line=f_line
+                        ))
+                        seen_identifiers.add(f"{fname}:{f_line}:{f_code}")
+
+            # --- 3.2. RUN HEALER (Generic repairs & Logic gaps) ---
             fixed_content, triggered_codes = linter_engine(f, dry_run=True, return_content=True)
 
             with open(f, 'r') as original:
@@ -417,9 +442,15 @@ def run():
             for t_code in triggered_codes:
                 parts = str(t_code).split(":")
                 code_str = parts[0].upper()
-                line_val = int(parts[1]) if len(parts) > 1 else None
+                line_val = int(parts[1]) if len(parts) > 1 else 1
 
-                # Generate specific descriptive messages
+                # DEDUPLICATION LOGIC GATE:
+                # If Shield already found this code on ANY line in this file,
+                # skip Healer's generic Line 1 "Logic Gap" warning.
+                if line_val == 1:
+                    if any(id.startswith(f"{fname}:") and id.endswith(f":{code_str}") for id in seen_identifiers):
+                        continue
+
                 msg = f"Logic gap detected by Healer engine: {code_str}"
                 if "DEPRECATED" in code_str:
                     msg = f"API Version '{code_str}' is deprecated and will be removed in future K8s releases."
@@ -434,6 +465,7 @@ def run():
                 ))
                 seen_identifiers.add(f"{fname}:{line_val}:{code_str}")
 
+            # --- 3.3. AUTO-FIX PIPELINE ---
             if fixed_content and fixed_content.strip() != original_content.strip():
                 if command == "fix":
                     status.stop()
@@ -490,30 +522,8 @@ def run():
                         code="FIXED", severity="🟡 WOULD FIX", file=fname, 
                         message="[bold green]API UPGRADE:[/bold green] repairs available", source="Healer"
                     ))
-
-            current_docs = [d for d in syn.all_docs if d.get('_origin_file') == fname]
-            for doc in current_docs:
-                findings = shield.scan(doc, all_docs=syn.all_docs)
-                for finding in findings:
-                    f_code = str(finding['code']).upper()
-                    f_line = finding.get('line')
-
-                    if f"{fname}:{f_line}:{f_code}" in seen_identifiers:
-                        continue
-
-                    is_fix_registered = any(i.file == fname and i.code == "FIXED" and "FIXED" in i.severity for i in all_issues)
-                    
-                    if command == "scan" or (command == "fix" and not is_fix_registered):
-                        all_issues.append(AuditIssue(
-                            code=f_code, 
-                            severity=str(finding['severity']),
-                            file=fname,
-                            message=str(finding['msg']),
-                            source="Shield",
-                            line=f_line
-                        ))
-                        seen_identifiers.add(f"{fname}:{f_line}:{f_code}")
             
+    # --- 3.4. CROSS-RESOURCE AUDIT (Synapse) ---
     synapse_findings = syn.audit()
     for issue in synapse_findings:
         issue.code = str(issue.code).upper()
@@ -555,7 +565,6 @@ def run():
         # Full Expanded Summary Counters
         ghosts    = sum(1 for i in all_issues if str(i.code).upper() == 'GHOST')
         hpa_gaps  = sum(1 for i in all_issues if str(i.code).upper() in ['HPA_LOGIC', 'HPA_MISSING_REQ'])
-        # Updated Security counter to include OOM_RISK and SEC_ prefixes
         security  = sum(1 for i in all_issues if any(x in str(i.code).upper() for x in ['RBAC', 'PRIVILEGED', 'SECRET', 'OOM_RISK', 'SEC_']))
         api_rot   = sum(1 for i in all_issues if str(i.code).upper() == 'API_DEPRECATED')
         repairs   = sum(1 for i in all_issues if str(i.code).upper() == 'FIXED' and "FIXED" in i.severity)
