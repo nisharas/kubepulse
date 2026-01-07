@@ -516,79 +516,80 @@ def run():
                 ))
                 seen_identifiers.add(f"{fname}:{line_val}:{code_str}")
 
-                # --- 3.3. AUTO-FIX PIPELINE ---
-                if fixed_content and fixed_content.strip() != original_content.strip():
-                    if command == "fix":
-                        status.stop()
-                        diff = list(difflib.unified_diff(
-                            original_content.splitlines(),
-                            fixed_content.splitlines(),
-                            fromfile="current", tofile="proposed", lineterm=""
-                        ))
-    
-                        if args.dry_run:
-                            console.print(f"\n[bold cyan]🔍 DRY RUN: Proposed changes for {fname}:[/bold cyan]")
-                            console.print(Syntax("\n".join(diff), "diff", theme="monokai"))
-                            
-                            all_issues.append(AuditIssue(
-                                code="FIXED", severity="🟡 WOULD FIX", file=fname, 
-                                message="[bold green]API UPGRADE:[/bold green] repairs available", source="Healer"
-                            ))
-                            status.start()
-                            continue 
-    
-                        console.print(f"\n[bold yellow]🛠️ Proposed fix for {fname}:[/bold yellow]")
-                        console.print(Syntax("\n".join(diff), "diff", theme="monokai"))
-                        
-                        do_fix = False
-                        if args.yes:
-                            do_fix = True
-                        elif sys.stdin.isatty():
-                            try:
-                                confirm = console.input(f"[bold cyan]👉 Apply this fix to {fname}? (y/N): [/bold cyan]").strip().lower()
-                                if confirm == 'y':
-                                    do_fix = True
-                            except (EOFError, KeyboardInterrupt):
-                                console.print("\n[bold red]Skipping fix due to interruption.[/bold red]")
-                                do_fix = False
-                        
-                        if do_fix:
-                            # Get the directory of the file to ensure the temp file is on the same partition
-                           target_dir = os.path.dirname(target_path)
-                            
-                            # Create a temporary file in the same directory
-                            fd, temp_path = tempfile.mkstemp(dir=target_dir, text=True, suffix='.yaml')
-                            try:
-                                with os.fdopen(fd, 'w') as tmp:
-                                    tmp.write(fixed_content)
-                                
-                                # Atomic swap: replaces the original file with the temp file
-                                os.replace(temp_path, target_path)
-                                
-                                all_issues.append(AuditIssue(
-                                    code="FIXED", severity="🟢 FIXED", file=fname, 
-                                    message="[bold green]FIXED:[/bold green] Applied repairs atomically.", 
-                                    source="Healer"
-                                ))
-                            except Exception as e:
-                                # Clean up the temp file if something went wrong before the replace
-                                if os.path.exists(temp_path):
-                                    os.remove(temp_path)
-                                log.error(f"Failed to save changes to {fname}: {e}")
-                        else:
-                            all_issues.append(AuditIssue(
-                                code="FIXED", severity="🟡 SKIPPED", file=fname, 
-                                message="[bold yellow]SKIPPED:[/bold yellow] Fix declined.", source="Healer"
-                            ))
-                        
-                        status.start()
-                        continue 
+			# --- 3.3. AUTO-FIX PIPELINE ---
+			if fixed_content and fixed_content.strip() != original_content.strip():
+				if command == "fix":
+					status.stop()
+					diff = list(difflib.unified_diff(
+						original_content.splitlines(),
+						fixed_content.splitlines(),
+						fromfile="current", tofile="proposed", lineterm=""
+					))
 
-                else:
-                    all_issues.append(AuditIssue(
-                        code="FIXED", severity="🟡 WOULD FIX", file=fname, 
-                        message="[bold green]API UPGRADE:[/bold green] repairs available", source="Healer"
-                    ))
+					if args.dry_run:
+						console.print(f"\n[bold cyan]🔍 DRY RUN: Proposed changes for {fname}:[/bold cyan]")
+						console.print(Syntax("\n".join(diff), "diff", theme="monokai"))
+						
+						all_issues.append(AuditIssue(
+							code="FIXED", severity="🟡 WOULD FIX", file=fname, 
+							message="[bold green]API UPGRADE:[/bold green] repairs available", source="Healer"
+						))
+						status.start()
+						continue 
+
+					console.print(f"\n[bold yellow]🛠️ Proposed fix for {fname}:[/bold yellow]")
+					console.print(Syntax("\n".join(diff), "diff", theme="monokai"))
+					
+					do_fix = False
+					if args.yes:
+						do_fix = True
+					elif sys.stdin.isatty():
+						try:
+							confirm = console.input(f"[bold cyan]👉 Apply this fix to {fname}? (y/N): [/bold cyan]").strip().lower()
+							if confirm == 'y':
+								do_fix = True
+						except (EOFError, KeyboardInterrupt):
+							console.print("\n[bold red]Skipping fix due to interruption.[/bold red]")
+							do_fix = False
+					
+					if do_fix:
+						# Get the directory of the file to ensure the temp file is on the same partition
+					   target_dir = os.path.dirname(target_path)
+						
+						# Create a temporary file in the same directory
+						fd, temp_path = tempfile.mkstemp(dir=target_dir, text=True, suffix='.yaml')
+						try:
+							with os.fdopen(fd, 'w') as tmp:
+								tmp.write(fixed_content)
+							
+							# Atomic swap: replaces the original file with the temp file
+							os.replace(temp_path, target_path)
+							
+							all_issues.append(AuditIssue(
+								code="FIXED", severity="🟢 FIXED", file=fname, 
+								message="[bold green]FIXED:[/bold green] Applied repairs atomically.", 
+								source="Healer"
+							))
+						except Exception as e:
+							# Clean up the temp file if something went wrong before the replace
+							if os.path.exists(temp_path):
+								os.remove(temp_path)
+							log.error(f"Failed to save changes to {fname}: {e}")
+					else:
+						all_issues.append(AuditIssue(
+							code="FIXED", severity="🟡 SKIPPED", file=fname, 
+							message="[bold yellow]SKIPPED:[/bold yellow] Fix declined.", source="Healer"
+						))
+					
+					status.start()
+					continue 
+
+
+			else:
+				all_issues.append(AuditIssue(
+					code="FIXED", severity="🟡 WOULD FIX", file=fname, 
+					message="[bold green]API UPGRADE:[/bold green] repairs available", source="Healer"
+				))
             
     # --- 3.4. CROSS-RESOURCE AUDIT (Synapse) ---
     synapse_findings = syn.audit()
