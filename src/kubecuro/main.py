@@ -170,6 +170,11 @@ def show_help():
     
     help_console.print("\n[bold yellow]Usage:[/bold yellow]")
     help_console.print("  kubecuro [command] [file_or_dir] [options]")
+
+    help_console.print("\n  [dim]7. Record current issues as a baseline (Technical Debt):[/dim]")
+    help_console.print("      kubecuro baseline ./manifests/")
+    help_console.print("\n  [dim]8. View all issues, including suppressed ones:[/dim]")
+    help_console.print("      kubecuro scan ./manifests/ --all")
     
     help_console.print("\n[bold yellow]Main Commands:[/bold yellow]")
     cmd_table = Table(show_header=False, box=None, padding=(0, 2))
@@ -327,7 +332,6 @@ def run():
     explain_p.add_argument(
         "resource", 
         nargs="?", 
-        choices=list(EXPLAIN_CATALOG.keys()),
         help="Resource keyword (hpa, rbac, etc.) or path to a YAML file"
     )
 
@@ -336,20 +340,33 @@ def run():
     argcomplete.autocomplete(parser, validator=lambda sig, val: True)
 
     args, unknown = parser.parse_known_args()
+
+    # Check for baseline presence early
+    HAS_BASELINE = os.path.exists(BASELINE_FILE)
+    
+    if HAS_BASELINE and not args.all and args.command in ["scan", "fix"]:
+        console.print(f"[dim]ℹ️  Baseline active ([cyan]{BASELINE_FILE}[/cyan]). Legacy issues are hidden. Use [bold]--all[/bold] to see everything.[/dim]")
     
     # --- 1. PRIORITY ROUTING ---
     if args.command == "completion":
-        if args.shell == "bash":
-            if sys.stdout.isatty() and not os.environ.get("KUBECURO_COMPLETION_SKIP_UI"):
+        if args.shell in ["bash", "zsh"]:
+            if sys.stdout.isatty():
+                shell_rc = "~/.bashrc" if args.shell == "bash" else "~/.zshrc"
                 console.print(Panel(
-                    "[bold yellow]Bash Completion Detected[/bold yellow]\n\n"
-                    "To enable autocompletion, run:\n"
-                    "[bold cyan]source <(kubecuro completion bash)[/bold cyan]\n\n"
-                    "To make it permanent, add it to your ~/.bashrc",
+                    f"[bold yellow]{args.shell.capitalize()} Completion Detected[/bold yellow]\n\n"
+                    f"To enable autocompletion, run:\n"
+                    f"[bold cyan]source <(kubecuro completion {args.shell})[/bold cyan]\n\n"
+                    f"To make it permanent, add it to your {shell_rc}",
                     title="Setup Guide"
                 ))
             else:
-                print('complete -o default -o nospace -C "kubecuro" "kubecuro"')
+                # argcomplete provides a universal register-python-argcomplete tool, 
+                # but for a standalone binary, we output the specific shell eval.
+                if args.shell == "bash":
+                    print('complete -o default -o nospace -C "kubecuro" "kubecuro"')
+                else:
+                    # Zsh specific autoload
+                    print('autoload -U compinit && compinit\npath_to_kubecuro=$(which kubecuro)\ncomplete -o default -o nospace -C "$path_to_kubecuro" "kubecuro"')
         return
 
     if args.help or (not args.command and not args.version and not unknown):
@@ -437,6 +454,8 @@ def run():
     with console.status(f"[bold green]Processing {len(files)} files...") as status:
         for f in files:
             fname = os.path.basename(f)
+            with open(f, 'r') as file_read:
+                original_content = file_read.read()
             syn.scan_file(f) 
             
             # --- 3.1. RUN SHIELD FIRST (High-precision diagnostics) ---
@@ -465,26 +484,28 @@ def run():
 
             # --- 3.2. RUN HEALER (Generic repairs & Logic gaps) ---
             fixed_content, triggered_codes = linter_engine(f, dry_run=True, return_content=True)
-
-            with open(f, 'r') as original:
-                original_content = original.read()
-
+            
             for t_code in triggered_codes:
+                # Handle both "CODE" and "CODE:LINE" formats
                 parts = str(t_code).split(":")
                 code_str = parts[0].upper()
                 line_val = int(parts[1]) if len(parts) > 1 else 1
-
-                # DEDUPLICATION LOGIC GATE:
-                # If Shield already found this code on ANY line in this file,
-                # skip Healer's generic Line 1 "Logic Gap" warning.
-                if line_val == 1:
-                    if any(id.startswith(f"{fname}:") and id.endswith(f":{code_str}") for id in seen_identifiers):
-                        continue
-
+            
+                # PRIORITY GATE: 
+                # Skip Healer if Shield already flagged this Rule ID on this specific line
+                if f"{fname}:{line_val}:{code_str}" in seen_identifiers:
+                    continue
+                    
+                # Skip Healer's generic 'Line 1' warning if Shield found the same code 
+                # anywhere else in the file (prevents double-counting file-wide issues)
+                if line_val == 1 and any(id.startswith(f"{fname}:") and id.endswith(f":{code_str}") for id in seen_identifiers):
+                    continue
+            
+                # Assign appropriate messaging
                 msg = f"Logic gap detected by Healer engine: {code_str}"
                 if "DEPRECATED" in code_str:
                     msg = f"API Version '{code_str}' is deprecated and will be removed in future K8s releases."
-
+            
                 all_issues.append(AuditIssue(
                     code=code_str,
                     severity="🔴 CRITICAL" if "DEPRECATED" in code_str else "🟡 WARNING",
@@ -524,7 +545,7 @@ def run():
                         do_fix = True
                     elif sys.stdin.isatty():
                         try:
-                            confirm = console.input(f"[bold cyan]Apply this fix to {fname}? (y/N): [/bold cyan]").strip().lower()
+                            confirm = console.input(f"[bold cyan]👉 Apply this fix to {fname}? (y/N): [/bold cyan]").strip().lower()
                             if confirm == 'y':
                                 do_fix = True
                         except (EOFError, KeyboardInterrupt):
@@ -533,16 +554,16 @@ def run():
                     
                     if do_fix:
                         # Get the directory of the file to ensure the temp file is on the same partition
-                        target_dir = os.path.dirname(os.path.abspath(f))
+                       target_dir = os.path.dirname(target_path)
                         
                         # Create a temporary file in the same directory
-                        fd, temp_path = tempfile.mkstemp(dir=target_dir, text=True)
+                        fd, temp_path = tempfile.mkstemp(dir=target_dir, text=True, suffix='.yaml')
                         try:
                             with os.fdopen(fd, 'w') as tmp:
                                 tmp.write(fixed_content)
                             
                             # Atomic swap: replaces the original file with the temp file
-                            os.replace(temp_path, f)
+                            os.replace(temp_path, target_path)
                             
                             all_issues.append(AuditIssue(
                                 code="FIXED", severity="🟢 FIXED", file=fname, 
@@ -597,13 +618,33 @@ def run():
 
     # --- 4. REPORTING ---
     if not reporting_issues:
-        console.print("\n[bold green]✔ No new issues found![/bold green]")
-        if legacy_summary:
-            console.print(f"[dim]Note: {sum(legacy_summary.values())} legacy issues hidden by baseline. Use --all to see them.[/dim]")
-    else:
-        issues_by_file = {}
-        for i in reporting_issues:
-            issues_by_file.setdefault(i.file, []).append(i)
+            console.print("\n[bold green]✔ No new issues found![/bold green]")
+            
+            # ADD THIS HERE: Even if no new issues, tell them what was hidden
+            if legacy_summary and not args.all:
+                 total_suppressed = sum(legacy_summary.values())
+                 console.print(Panel(
+                    f"🛡️  [bold]{total_suppressed}[/bold] legacy issues are currently suppressed by your baseline.\n"
+                    f"Run [bold cyan]kubecuro scan --all[/bold cyan] to audit your full technical debt.",
+                    title="Baseline Intelligence",
+                    border_style="cyan",
+                    expand=False
+                ))
+        else:
+            # ADD THIS HERE: If new issues exist, show the panel above the tables
+            if legacy_summary and not args.all:
+                total_suppressed = sum(legacy_summary.values())
+                console.print(Panel(
+                    f"🛡️  [bold]{total_suppressed}[/bold] legacy issues are currently suppressed by your baseline.\n"
+                    f"Run [bold cyan]kubecuro scan --all[/bold cyan] to audit your full technical debt.",
+                    title="Baseline Intelligence",
+                    border_style="cyan",
+                    expand=False
+                ))
+    
+            issues_by_file = {}
+            for i in reporting_issues:
+                issues_by_file.setdefault(i.file, []).append(i)
 
         for filename, file_issues in issues_by_file.items():
             console.print(f"\n📂 [bold white]LOCATION: {filename}[/bold white]")
@@ -678,6 +719,9 @@ def run():
 
         if api_rot > 0:
             console.print(Panel(f"💡 [bold]Healer Tip:[/bold] {api_rot} API deprecations found. Run [bold cyan]kubecuro fix[/bold cyan] to upgrade them automatically.", border_style="blue"))
+
+        if len(reporting_issues) > 20 and not HAS_BASELINE:
+                console.print("\n[bold yellow]💡 Pro-Tip:[/bold yellow] Found a lot of existing debt? Run [bold cyan]kubecuro baseline .[/bold cyan] to suppress these and focus on new changes moving forward.")
 
 if __name__ == "__main__":
     run()
