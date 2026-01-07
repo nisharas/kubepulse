@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 --------------------------------------------------------------------------------
 AUTHOR:          Nishar A Sunkesala / FixMyK8s
@@ -47,7 +48,6 @@ class Shield:
             if hasattr(doc, 'lc') and hasattr(doc.lc, 'line'):
                 return doc.lc.line + 1
             
-            # Fallback for nested objects that might be standard dicts but part of a CommentedMap
             return 1
         except Exception:
             return 1
@@ -88,7 +88,7 @@ class Shield:
             ingress_ns = doc.get('metadata', {}).get('namespace', 'default')
             spec = doc.get('spec', {}) or {}
             
-            # 
+            # Iterate through rules and paths
             for rule in spec.get('rules', []):
                 http = rule.get('http', {}) or {}
                 for path in http.get('paths', []):
@@ -115,12 +115,14 @@ class Shield:
                                 "line": self.get_line(path)
                             })
                     else:
-                        findings.append({
-                            "code": "INGRESS_ORPHAN",
-                            "severity": "🟠 WARNING",
-                            "msg": f"Ingress '{ingress_name}' points to Service '{target_svc}', but that Service was not found in this namespace.",
-                            "line": self.get_line(path)
-                        })
+                        # Safety check: Only report orphan if we have scanned multiple documents (prevents false positives on single file scan)
+                        if len(all_docs) > 1:
+                            findings.append({
+                                "code": "INGRESS_ORPHAN",
+                                "severity": "🟠 WARNING",
+                                "msg": f"Ingress '{ingress_name}' points to Service '{target_svc}', but that Service was not found in this scan context.",
+                                "line": self.get_line(path)
+                            })
         return findings
 
     def check_version_and_security(self, doc: dict) -> list:
@@ -145,11 +147,12 @@ class Shield:
             template = spec.get('template') or {} if kind != 'Pod' else doc
             t_spec = template.get('spec') or {}
             
+            # Aligning with Healer's new safety logic
             if t_spec.get('automountServiceAccountToken') is not False:
                 findings.append({
                     "severity": "🟡 WARN",
-                    "code": "SEC_TOKEN_MOUNT",
-                    "msg": f"🛡️ Best Practice: {kind} '{name}' automounts ServiceAccount tokens.",
+                    "code": "SEC_TOKEN_AUDIT",
+                    "msg": f"🛡️ Best Practice: {kind} '{name}' automounts ServiceAccount tokens. Consider disabling if unused.",
                     "line": self.get_line(t_spec, 'automountServiceAccountToken') if 'automountServiceAccountToken' in t_spec else self.get_line(doc)
                 })
             
@@ -171,19 +174,18 @@ class Shield:
         rules = resource.get("rules") or resource.get("spec", {}).get("rules", [])
     
         if kind in ["Role", "ClusterRole"]:
-            # 
             for rule in rules:
                 verbs = rule.get("verbs", [])
-                resources = rule.get("resources", [])
+                res_list = rule.get("resources", [])
 
-                if "*" in verbs and "*" in resources:
+                if "*" in verbs and "*" in res_list:
                     findings.append({
                         "severity": "🔴 HIGH", 
                         "code": "RBAC_WILD",
                         "msg": f"🚨 Critical Security Risk: {kind} '{name}' uses global wildcards (*).",
                         "line": self.get_line(rule)
                     })
-                elif "secrets" in resources and any(v in verbs for v in ["*", "get", "list", "watch"]):
+                elif "secrets" in res_list and any(v in verbs for v in ["*", "get", "list", "watch"]):
                      findings.append({
                         "severity": "🟠 MED", 
                         "code": "RBAC_SECRET",
