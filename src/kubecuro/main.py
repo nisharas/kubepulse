@@ -534,7 +534,7 @@ def run():
             console.print(f"\n📂 [bold white]LOCATION: {filename}[/bold white]")
             res_table = Table(header_style="bold cyan", box=None, show_header=True)
             res_table.add_column("Severity", width=12) 
-            res_table.add_column("Line", style="dim", justify="right", width=6)
+            res_table.add_column("Line", style="grey70", justify="right", width=6)
             res_table.add_column("Rule ID", style="bold red", width=15) 
             res_table.add_column("Message")
             
