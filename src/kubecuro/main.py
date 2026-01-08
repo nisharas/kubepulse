@@ -16,6 +16,7 @@ import difflib
 import time
 import json
 import tempfile
+import subprocess
 
 from typing import List
 from argcomplete.completers import FilesCompleter
@@ -218,8 +219,9 @@ def show_help():
     help_console.print("      kubecuro baseline ./manifests-folder/")
     help_console.print("\n  [dim]7. View all issues, including suppressed ones:[/dim]")
     help_console.print("      kubecuro scan ./manifests-folder/ --all")
-    help_console.print("\n[dim]💡 Tip: Run 'kubecuro completion zsh' (or bash) to enable tab-autocompletion![/dim]")
-    help_console.print("\n[italic white]Architecture: Static Binary / x86_64[/italic white]\n")
+    help_console.print("\n[dim]💡 Tip: [bold cyan]source <(kubecuro completion bash)[/bold cyan] for instant tab-completion![/dim]")
+    help_console.print(f"\n[italic white]Architecture: {platform.machine()}[/italic white]\n")
+
 
 def show_checklist():
     table = Table(title="📋 KubeCuro Logic Checklist", header_style="bold magenta")
@@ -402,29 +404,30 @@ def run():
     if args.command == "completion":
         if args.shell in ["bash", "zsh"]:
             if sys.stdout.isatty():
+                # Show instructions
                 shell_rc = "~/.bashrc" if args.shell == "bash" else "~/.zshrc"
                 console.print(Panel(
-                    f"[bold yellow]{args.shell.capitalize()} Completion Detected[/bold yellow]\n\n"
-                    f"To enable autocompletion, run:\n"
-                    f"[bold cyan]source <(kubecuro completion {args.shell})[/bold cyan]\n\n"
-                    f"To make it permanent, add it to your {shell_rc}",
-                    title="Setup Guide"
+                    f"[bold cyan]🚀 {args.shell.upper()} Completion Setup[/]\n\n"
+                    f"[bold green]1. Test immediately:[/]\n"
+                    f"   eval \"$(register-python-argcomplete kubecuro)\"\n\n"
+                    f"[bold green]2. Make permanent:[/]\n"
+                    f"   echo 'eval \"$(register-python-argcomplete kubecuro)\"' >> {shell_rc}\n"
+                    f"   source {shell_rc}",
+                    title="Quick Setup", border_style="green"
                 ))
             else:
-                # argcomplete provides a universal register-python-argcomplete tool, 
-                # but for a standalone binary, we output the specific shell eval.
-                if args.shell == "bash":
-                    print('complete -o default -o nospace -C "kubecuro" "kubecuro"')
-                else:
-                    # Simpler Zsh approach that works with most modern Oh-My-Zsh setups
-                    print('autoload -U compinit && compinit')
-                    print('complete -o default -o nospace -C "kubecuro" "kubecuro"')
-                    
+                # Output actual argcomplete activation (like kubectl completion bash)
+                try:
+                    result = subprocess.run(['register-python-argcomplete', 'kubecuro'], 
+                                          capture_output=True, text=True, check=True)
+                    print(result.stdout)
+                except Exception:
+                    print('# Registration failed - ensure argcomplete is installed')
         return
-
     
     if args.version or args.command == "version":
-        console.print(f"[bold magenta]KubeCuro Version:[/bold magenta] 1.0.0 ({platform.machine()})")
+        console.print(f"[bold magenta]KubeCuro Version:[/bold magenta] v1.0.0 ({platform.machine()})")
+
         return
 
     if args.command == "checklist":
@@ -693,31 +696,31 @@ def run():
             reporting_issues.append(issue)
 
     # --- 4. REPORTING ---
-        if not reporting_issues:
-            console.print("\n[bold green]✔ No new issues found![/bold green]")
-        else:
-            issues_by_file = {}
-            for i in reporting_issues:
-                issues_by_file.setdefault(i.file, []).append(i)
+    if not reporting_issues:
+        console.print("\n[bold green]✔ No new issues found![/bold green]")
+    else:
+        issues_by_file = {}
+        for i in reporting_issues:
+            issues_by_file.setdefault(i.file, []).append(i)
 
-            for filename, file_issues in issues_by_file.items():
-                console.print(f"\n📂 [bold white]LOCATION: {filename}[/bold white]")
-                res_table = Table(header_style="bold cyan", box=None, show_header=True)
-                res_table.add_column("Severity", width=12) 
-                res_table.add_column("Line", style="grey70", justify="right", width=6)
-                res_table.add_column("Rule ID", style="bold red", width=15) 
-                res_table.add_column("Message")
-                
-                for i in sorted(file_issues, key=lambda x: (x.line if x.line else 0)):
-                    if "CRITICAL" in i.severity or "HIGH" in i.severity: c = "red"
-                    elif "MEDIUM" in i.severity: c = "yellow"
-                    elif "INFO" in i.severity: c = "blue"
-                    elif "AUTO" in i.severity or "FIXED" in i.severity: c = "green"
-                    else: c = "white"
+        for filename, file_issues in issues_by_file.items():
+            console.print(f"\n📂 [bold white]LOCATION: {filename}[/bold white]")
+            res_table = Table(header_style="bold cyan", box=None, show_header=True)
+            res_table.add_column("Severity", width=12) 
+            res_table.add_column("Line", style="grey70", justify="right", width=6)
+            res_table.add_column("Rule ID", style="bold red", width=15) 
+            res_table.add_column("Message")
+            
+            for i in sorted(file_issues, key=lambda x: (x.line if x.line else 0)):
+                if "CRITICAL" in i.severity or "HIGH" in i.severity: c = "red"
+                elif "MEDIUM" in i.severity: c = "yellow"
+                elif "INFO" in i.severity: c = "blue"
+                elif "AUTO" in i.severity or "FIXED" in i.severity: c = "green"
+                else: c = "white"
 
-                    line_display = str(i.line) if i.line else "-"
-                    res_table.add_row(f"[{c}]{i.severity}[/{c}]", line_display, i.code, i.message)
-                console.print(res_table)
+                line_display = str(i.line) if i.line else "-"
+                res_table.add_row(f"[{c}]{i.severity}[/{c}]", line_display, i.code, i.message)
+            console.print(res_table)
 
         # --- 5. FINAL SUMMARY LOGIC ---
         active_issues = len([i for i in reporting_issues if "FIXED" not in i.severity and "HEALED" not in i.code])
