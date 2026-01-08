@@ -416,8 +416,6 @@ def run():
                     
         return
 
-    if args.help or (not args.command and not args.version and not unknown):
-        show_help(); return
     
     if args.version or args.command == "version":
         console.print(f"[bold magenta]KubeCuro Version:[/bold magenta] 1.0.0 ({platform.machine()})")
