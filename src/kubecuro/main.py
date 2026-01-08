@@ -344,18 +344,19 @@ def run():
 
     subparsers.add_parser("completion").add_argument("shell", choices=["bash", "zsh"])
 
-    # 2. ACTIVATE AUTOCOMPLETE
-    # This function is smart: it checks for _ARGCOMPLETE itself. 
-    # If it finds it, it provides suggestions and EXITs the script.
-    argcomplete.autocomplete(parser)
-
-    # 3. 🛡️ THE SAFETY GATE (ADD THIS LINE)
-    # If _ARGCOMPLETE is in the environment, it means we are just 
-    # doing a Tab-completion. We must EXIT now so argparse doesn't crash.
+    # 2. THE MAGIC GATEKEEPER
+    # If the shell is hitting TAB, this function sends the info and EXITS the script.
     if "_ARGCOMPLETE" in os.environ:
+        argcomplete.autocomplete(parser)
         sys.exit(0)
 
-    args, unknown = parser.parse_known_args()
+    # 3. SAFE PARSING
+    # We use parse_known_args to avoid crashing on weird shell-injected strings
+    try:
+        args, unknown = parser.parse_known_args()
+    except Exception:
+        # If we still get a weird parsing error during a background check, just exit
+        sys.exit(0)
 
     start_time = time.time() 
     logo_path = resource_path("assets/KubeCuro-Logo.png")
