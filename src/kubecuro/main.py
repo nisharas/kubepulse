@@ -323,7 +323,7 @@ def run():
     # 1. SETUP THE PARSER
     parser = argparse.ArgumentParser(
         prog="kubecuro",
-        description="KubeCuro: Specialized K8s hygiene and optimization tool."
+        description="KubeCuro: Specialized K8s hygiene and optimization tool.", add_help=False
     )
     
     # SILENCE ARGPARSE ERRORS only when probing
@@ -331,7 +331,7 @@ def run():
         parser.error = lambda msg: sys.exit(0)
 
     parser.add_argument("-v", "--version", action="store_true")
-    #parser.add_argument("-h", "--help", action="store_true")
+    parser.add_argument("-h", "--help", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("-y", "--yes", action="store_true")
     parser.add_argument("--all", action="store_true")
@@ -380,11 +380,8 @@ def run():
 
     # --- 5. FALLBACK / NO ARGUMENTS ---
     # If no command was provided and no flags were set, just show the help and exit
-    if not command and not args.version:
-        if "show_help" in globals():
-            show_help()  # This brings back the logo, colors, and ASCII
-        else:
-            parser.print_help() 
+    if args.help or (not command and not args.version):
+        show_help()  # Your beautiful function with the logo/colors
         sys.exit(0)
         
     # --- 6. EXECUTION ---
