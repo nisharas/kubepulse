@@ -368,15 +368,18 @@ def run():
     command = args.command
     target = getattr(args, 'target', None)
 
-    if not command and unknown:
-        if unknown[0] in ["scan", "fix", "baseline", "explain", "checklist"]:
-            command = unknown[0]
-            target = unknown[1] if len(unknown) > 1 else None
-        elif os.path.exists(unknown[0]):
+    if not command and unknown and len(unknown) > 0:
+        if os.path.exists(unknown[0]):
             command = "scan"
             target = unknown[0]
 
-    # --- 5. EXECUTION ---
+    # --- 5. FALLBACK / NO ARGUMENTS ---
+    # If no command was provided and no flags were set, just show the help and exit
+    if not command and not args.version:
+        parser.print_help()
+        sys.exit(0)
+        
+    # --- 6. EXECUTION ---
     start_time = time.time()
     logo_path = resource_path("assets/KubeCuro-Logo.png")
     if not os.path.exists(logo_path):
