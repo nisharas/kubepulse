@@ -496,8 +496,7 @@ def run():
             pass 
         else:
             console.print("[bold red]Error:[/bold red] Target path (file or directory) required.")
-            show_help()
-            sys.exit(1)
+             sys.exit(1)
 
     # --- 3. CORE PIPELINE ---
     console.print(Panel(f"❤️ [bold white]KubeCuro {command.upper()}[/bold white]", style="bold magenta", expand=True, title_align="center"))
