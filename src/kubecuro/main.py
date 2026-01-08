@@ -27,6 +27,7 @@ from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.syntax import Syntax
 from rich.progress_bar import ProgressBar
+from rich.rule import Rule
 
 # Internal Package Imports
 from kubecuro.healer import linter_engine
@@ -147,6 +148,18 @@ KubeCuro checks for **Placement Contradictions**:
 KubeCuro detects potential **Out-of-Memory** failures:
 1. **Missing Limits**: Containers without memory limits can destabilize nodes.
 2. **Request/Limit Gap**: Large gaps between requests and limits can lead to unpredictable eviction.
+""",
+    "repair": """
+# ✨ KubeCuro Auto-Healing Logic
+When you run `kubecuro fix`, the engine performs **Atomic Manifest Repair**:
+
+1. **API Migration**: Automatically bumps `extensions/v1beta1` to `networking.k8s.io/v1`.
+2. **Schema Correction**: Fixes indentation errors and missing mandatory fields.
+3. **Safety First**: KubeCuro creates a temporary "shadow" file to test the fix before overwriting your original YAML.
+
+**How to use:**
+* Preview fixes: `kubecuro fix ./manifests --dry-run`
+* Apply all: `kubecuro fix ./manifests -y`
 """
 }
 
@@ -169,13 +182,14 @@ def show_help():
     ))
     
     help_console.print("\n[bold yellow]Usage:[/bold yellow]")
-    help_console.print("  kubecuro [command] [file_or_dir] [options]")
+    help_console.print("  [bold cyan]kubecuro[/bold cyan] [command] [target] [options]")
    
     help_console.print("\n[bold yellow]Main Commands:[/bold yellow]")
     cmd_table = Table(show_header=False, box=None, padding=(0, 2))
     cmd_table.add_row("  [bold cyan]scan[/bold cyan]", "Analyze manifests for logic errors (Read-only)")
     cmd_table.add_row("  [bold cyan]fix[/bold cyan]", "Automatically repair syntax and API deprecations")
-    cmd_table.add_row("  [bold cyan]explain[/bold cyan]", "Describe logic used for a resource (e.g., explain hpa)")
+    cmd_table.add_row("  [bold cyan]explain[/bold cyan]", "Learn the reasoning behind specific rules or resources. (e.g., explain hpa)")
+    cmd_table.add_row("  [bold]baseline[/bold]   Suppress current issues to focus on new technical debt.")
     cmd_table.add_row("  [bold cyan]checklist[/bold cyan]", "Show all active logic rules")
     cmd_table.add_row("  [bold cyan]completion[/bold cyan]", "Setup tab-autocompletion for your shell (bash/zsh)")
     help_console.print(cmd_table)
@@ -192,19 +206,17 @@ def show_help():
     help_console.print("  [dim]1. Scan a specific file for logic gaps:[/dim]")
     help_console.print("      kubecuro scan deployment.yaml")
     help_console.print("\n  [dim]2. Smart-Route (Automatic Scan if command is omitted):[/dim]")
-    help_console.print("      kubecuro ./manifests/")
+    help_console.print("      kubecuro ./manifests-folder/")
     help_console.print("\n  [dim]3. Automatically fix API deprecations and syntax:[/dim]")
     help_console.print("      kubecuro fix ./test-cluster/")
     help_console.print("\n  [dim]4. Preview fixes without touching the YAML files:[/dim]")
     help_console.print("      kubecuro fix service.yaml --dry-run")
-    help_console.print("\n  [dim]5. Understand why KubeCuro audits RBAC:[/dim]")
+    help_console.print("\n  [dim]5. Get detailed logic for any resource or rule:[/dim]")
     help_console.print("      kubecuro explain rbac")
-    help_console.print("\n  [dim]6. Enable Autocomplete:[/dim]")
-    help_console.print("       [bold cyan]source <(kubecuro completion bash)[/bold cyan]")
-    help_console.print("\n  [dim]7. Record current issues as a baseline (Technical Debt):[/dim]")
-    help_console.print("      kubecuro baseline ./manifests/")
-    help_console.print("\n  [dim]8. View all issues, including suppressed ones:[/dim]")
-    help_console.print("      kubecuro scan ./manifests/ --all")
+    help_console.print("\n  [dim]6. Record current issues as a baseline (Technical Debt):[/dim]")
+    help_console.print("      kubecuro baseline ./manifests-folder/")
+    help_console.print("\n  [dim]7. View all issues, including suppressed ones:[/dim]")
+    help_console.print("      kubecuro scan ./manifests-folder/ --all")
     
     help_console.print("\n[italic white]Architecture: Static Binary / x86_64[/italic white]\n")
 
@@ -414,14 +426,22 @@ def run():
             interactive_explain(res, file_issues)
             return
 
-        if res in EXPLAIN_CATALOG:
-            console.print(Panel(Markdown(EXPLAIN_CATALOG[res]), title=f"Logic: {res}", border_style="green"))
+        # Check the catalog first
+        explanation_text = EXPLAIN_CATALOG.get(res)
+        
+        if explanation_text:
+            console.print(Panel(Markdown(explanation_text), title=f"KubeCuro Knowledge Base: {res.upper()}", border_style="cyan"))
         else:
             console.print("[red]Please provide a valid keyword (hpa, rbac) or a filename.[/red]")
         return
 
     # --- 2. SMART COMMAND ROUTING ---
     command, target = args.command, getattr(args, 'target', None)
+    
+    # 🛑 THIS LINE: If we are in the middle of autocompleting, STOP here.
+    if "_ARGCOMPLETE" in os.environ:
+        return
+    
     if not command and unknown:
         if os.path.exists(unknown[0]):
             command, target = "scan", unknown[0]
@@ -437,7 +457,7 @@ def run():
             sys.exit(1)
 
     # --- 3. CORE PIPELINE ---
-    console.print(Panel(f"❤️ [bold white]KubeCuro {command.upper()}[/bold white]", style="bold magenta"))
+    console.print(Panel(f"❤️ [bold white]KubeCuro {command.upper()}[/bold white]", style="bold magenta", expand=True, title_align="center"))
     
     syn, shield, all_issues = Synapse(), Shield(), []
     seen_identifiers = set()  # UNIQUE TRACKER: fname:line:code
@@ -489,6 +509,13 @@ def run():
                 parts = str(t_code).split(":")
                 code_str = parts[0].upper()
                 line_val = int(parts[1]) if len(parts) > 1 else 1
+
+                # 🎯 Better Anchoring: If it says Line 1 and it's OOM_RISK, find the real line
+                if line_val == 1 and code_str == "OOM_RISK":
+                    for idx, line_text in enumerate(original_content.splitlines()):
+                        if "image:" in line_text or "containerPort:" in line_text:
+                            line_val = idx + 1
+                            break
             
                 # PRIORITY GATE: 
                 # Skip Healer if Shield already flagged this Rule ID on this specific line
@@ -505,14 +532,23 @@ def run():
                 if "DEPRECATED" in code_str:
                     msg = f"API Version '{code_str}' is deprecated and will be removed in future K8s releases."
             
+                # Standardized Severity Mapping
+                if "DEPRECATED" in code_str:
+                    sev, msg = "🔵 INFO", f"API Version '{code_str}' is deprecated. Auto-fix available."
+                elif "OOM_RISK" in code_str:
+                    sev, msg = "🟠 HIGH", "Memory limits missing. Risk of Node instability."
+                else:
+                    sev, msg = "🟡 MEDIUM", f"Logic gap detected: {code_str}"
+
                 all_issues.append(AuditIssue(
                     code=code_str,
-                    severity="🔴 CRITICAL" if "DEPRECATED" in code_str else "🟡 WARNING",
+                    severity=sev,
                     file=fname,
                     line=line_val,
                     message=msg,
                     source="Healer"
                 ))
+                
                 seen_identifiers.add(f"{fname}:{line_val}:{code_str}")
 
             # --- 3.3. AUTO-FIX PIPELINE ---
@@ -528,11 +564,12 @@ def run():
                     if args.dry_run:
                         console.print(f"\n[bold cyan]🔍 DRY RUN: Proposed changes for {fname}:[/bold cyan]")
                         console.print(Syntax("\n".join(diff), "diff", theme="monokai"))
-                        
+
                         all_issues.append(AuditIssue(
-                            code="FIXED", severity="🟡 WOULD FIX", file=fname, 
-                            message="[bold green]API UPGRADE:[/bold green] repairs available", source="Healer"
+                            code="REPAIR", severity="✨ AUTO", file=fname, 
+                            message="Automated repairs are available for this file. Run 'fix' to apply.", source="Healer"
                         ))
+                        
                         status.start()
                         continue 
 
@@ -563,7 +600,7 @@ def run():
                             os.replace(temp_path, target_path)
                             
                             all_issues.append(AuditIssue(
-                                code="FIXED", severity="🟢 FIXED", file=fname, 
+                                code="HEALED", severity="🟢 FIXED", file=fname, 
                                 message="[bold green]FIXED:[/bold green] Applied repairs atomically.", 
                                 source="Healer"
                             ))
@@ -580,9 +617,13 @@ def run():
                     status.start()
                     continue 
                 else:
+                    # This triggers during a 'scan' if a fix is possible but not yet applied
                     all_issues.append(AuditIssue(
-                        code="FIXED", severity="🟡 WOULD FIX", file=fname, 
-                        message="[bold green]API UPGRADE:[/bold green] repairs available", source="Healer"
+                        code="REPAIR", 
+                        severity="🔵 INFO", 
+                        file=fname, 
+                        message="[bold cyan]Healer:[/bold cyan] Automated repairs available. Run [italic]kubecuro fix[/italic] to apply.", 
+                        source="Healer"
                     ))
             
     # --- 3.4. CROSS-RESOURCE AUDIT (Synapse) ---
@@ -612,109 +653,95 @@ def run():
             reporting_issues.append(issue)
 
     # --- 4. REPORTING ---
-    if not reporting_issues:
-        console.print("\n[bold green]✔ No new issues found![/bold green]")
+        if not reporting_issues:
+            console.print("\n[bold green]✔ No new issues found![/bold green]")
+        else:
+            issues_by_file = {}
+            for i in reporting_issues:
+                issues_by_file.setdefault(i.file, []).append(i)
+
+            for filename, file_issues in issues_by_file.items():
+                console.print(f"\n📂 [bold white]LOCATION: {filename}[/bold white]")
+                res_table = Table(header_style="bold cyan", box=None, show_header=True)
+                res_table.add_column("Severity", width=12) 
+                res_table.add_column("Line", style="grey70", justify="right", width=6)
+                res_table.add_column("Rule ID", style="bold red", width=15) 
+                res_table.add_column("Message")
+                
+                for i in sorted(file_issues, key=lambda x: (x.line if x.line else 0)):
+                    if "CRITICAL" in i.severity or "HIGH" in i.severity: c = "red"
+                    elif "MEDIUM" in i.severity: c = "yellow"
+                    elif "INFO" in i.severity: c = "blue"
+                    elif "AUTO" in i.severity or "FIXED" in i.severity: c = "green"
+                    else: c = "white"
+
+                    line_display = str(i.line) if i.line else "-"
+                    res_table.add_row(f"[{c}]{i.severity}[/{c}]", line_display, i.code, i.message)
+                console.print(res_table)
+
+        # --- 5. FINAL SUMMARY LOGIC ---
+        active_issues = len([i for i in reporting_issues if "FIXED" not in i.severity and "HEALED" not in i.code])
+        suppressed_count = sum(legacy_summary.values())
+        total_found = active_issues + suppressed_count
         
-        if legacy_summary and not args.all:
-            total_suppressed = sum(legacy_summary.values())
-            console.print(Panel(
-                f"🛡️  [bold]{total_suppressed}[/bold] legacy issues are currently suppressed by your baseline.\n"
-                f"Run [bold cyan]kubecuro scan --all[/bold cyan] to audit your full technical debt.",
-                title="Baseline Intelligence",
-                border_style="cyan",
-                expand=False
-            ))
-    else:
-        if legacy_summary and not args.all:
-            total_suppressed = sum(legacy_summary.values())
-            console.print(Panel(
-                f"🛡️  [bold]{total_suppressed}[/bold] legacy issues are currently suppressed by your baseline.\n"
-                f"Run [bold cyan]kubecuro scan --all[/bold cyan] to audit your full technical debt.",
-                title="Baseline Intelligence",
-                border_style="cyan",
-                expand=False
-            ))
-    
-        issues_by_file = {}
-        for i in reporting_issues:
-            issues_by_file.setdefault(i.file, []).append(i)
+        # 📊 Calculate Health Score & Risk Level
+        if total_found == 0:
+            success_rate = 100
+            risk_level = "[bold green]LOW[/bold green] ✅"
+            panel_color = "green"
+        elif active_issues == 0:
+            success_rate = 100
+            risk_level = "[bold cyan]STABLE (Baseline Active)[/bold cyan] 🛡️"
+            panel_color = "cyan"
+        else:
+            success_rate = max(0, int(((total_found - active_issues) / total_found) * 100))
+            if success_rate > 80:
+                risk_level = "[bold yellow]MEDIUM[/bold yellow] ⚠️"
+                panel_color = "yellow"
+            else:
+                risk_level = "[bold red]HIGH[/bold red] 🚨"
+                panel_color = "red"
 
-        for filename, file_issues in issues_by_file.items():
-            console.print(f"\n📂 [bold white]LOCATION: {filename}[/bold white]")
-            res_table = Table(header_style="bold cyan", box=None, show_header=True)
-            res_table.add_column("Severity", width=12) 
-            res_table.add_column("Line", style="grey70", justify="right", width=6)
-            res_table.add_column("Rule ID", style="bold red", width=15) 
-            res_table.add_column("Message")
-            
-            for i in sorted(file_issues, key=lambda x: (x.line if x.line else 0)):
-                if "🔴" in i.severity: c = "red"
-                elif "🟡" in i.severity: c = "yellow"
-                elif "🟢" in i.severity: c = "green"
-                else: c = "white"
-
-                line_display = str(i.line) if i.line else "-"
-                res_table.add_row(f"[{c}]{i.severity}[/{c}]", line_display, i.code, i.message)
-
-            console.print(res_table)
-
-        # --- Updated Counters (New vs Suppressed) ---
-        suppressed_sec = sum(legacy_summary.get(k, 0) for k in legacy_summary if any(x in k for x in ['RBAC', 'PRIVILEGED', 'SECRET', 'OOM_RISK', 'SEC_']))
-        suppressed_ghost = legacy_summary.get('GHOST', 0)
-        suppressed_hpa = legacy_summary.get('HPA_LOGIC', 0) + legacy_summary.get('HPA_MISSING_REQ', 0)
-
-        active_sec = sum(1 for i in reporting_issues if any(x in str(i.code).upper() for x in ['RBAC', 'PRIVILEGED', 'SECRET', 'OOM_RISK', 'SEC_']))
-        active_ghost = sum(1 for i in reporting_issues if str(i.code).upper() == 'GHOST')
-        active_hpa = sum(1 for i in reporting_issues if str(i.code).upper() in ['HPA_LOGIC', 'HPA_MISSING_REQ'])
-
-        # Compatibility for health logic
-        ghosts = active_ghost + suppressed_ghost
-        hpa_gaps = active_hpa + suppressed_hpa
-        security = active_sec + suppressed_sec
-        api_rot = sum(1 for i in all_issues if str(i.code).upper() == 'API_DEPRECATED')
-        repairs = sum(1 for i in all_issues if str(i.code).upper() == 'FIXED' and "FIXED" in i.severity)
-
-        # UI Styling Logic
-        all_sev_str = "".join([i.severity for i in all_issues])
-        border_col = "red" if (security > 0 or ghosts > 0 or "🔴" in all_sev_str) else "yellow" if (hpa_gaps > 0 or "🟡" in all_sev_str) else "green"
-
-        elapsed_time = time.time() - start_time
-        unhealthy_files = {i.file for i in all_issues if ("🔴" in i.severity and not any(f.file == i.file and f.code == "FIXED" for f in all_issues)) or i.code in ["GHOST", "HPA_LOGIC", "HPA_MISSING_REQ", "OOM_RISK"]}
-        success_rate = max(0, min(100, ((len(files) - len(unhealthy_files)) / len(files)) * 100)) if files else 0
-
-        # FINAL SUMMARY TABLE
-        summary_table = Table(show_header=True, box=None, padding=(0, 2), header_style="bold cyan")
-        summary_table.add_column("Category", style="white")
-        summary_table.add_column("Active", justify="center", style="bold")
-        summary_table.add_column("Suppressed", justify="center", style="dim")
-
-        summary_table.add_row("🛡️ Security Risks", f"[red]{active_sec}[/red]", str(suppressed_sec))
-        summary_table.add_row("👻 Ghost Services", f"[yellow]{active_ghost}[/yellow]", str(suppressed_ghost))
-        summary_table.add_row("📈 HPA Logic Gaps", f"[blue]{active_hpa}[/blue]", str(suppressed_hpa))
+        # Count specific categories for the table
+        api_rot = sum(1 for i in reporting_issues if "REPAIR" in str(i.code).upper())
+        repairs_applied = sum(1 for i in reporting_issues if "HEALED" in str(i.code).upper())
         
-        summary_table.add_section()
-        summary_table.add_row("📁 Files Scanned", str(len(files)), "")
-        summary_table.add_row("⏱️ Time Elapsed", f"{elapsed_time:.2f}s", "")
+        console.print("\n", Rule(title="[bold white]FINAL AUDIT SUMMARY[/bold white]", style="dim"), "\n")
+        
+        # Display the Risk Gauge first
+        console.print(Panel(
+            f"  [bold]Health Score:[/bold] {success_rate}%  |  [bold]Risk Level:[/bold] {risk_level}",
+            border_style=panel_color,
+            expand=False
+        ))
 
-        rate_color = "green" if success_rate > 80 else "yellow" if success_rate > 50 else "red"
-        summary_table.add_row(f"{'🎯' if success_rate == 100 else '⚠️'} Health Score", f"[{rate_color}]{success_rate:.1f}%[/{rate_color}]", "")
+        summary_table = Table(show_header=True, box=None, padding=(0, 2), header_style="bold magenta")
+        summary_table.add_column("Category")
+        summary_table.add_column("Active", justify="right")
+        summary_table.add_column("Suppressed", justify="right")
 
-        # Display Suppressed Baseline if it exists
-        if legacy_summary:
-            sum_text = "\n".join([f"• [dim]{count} {code}[/dim]" for code, count in legacy_summary.items()])
-            console.print(Panel(sum_text, title="📦 [bold white]BASELINE (Suppressed)[/bold white]", border_style="dim", expand=False))
+        summary_table.add_row("🛡️  Active Risks", str(active_issues), str(suppressed_count))
+        summary_table.add_row("✨  Auto-Repairs Avail.", str(api_rot), "0")
+        summary_table.add_row("🟢  Repairs Applied", str(repairs_applied), "0")
 
-        console.print(Panel(summary_table, title="📊 [bold white]Final Audit Summary[/bold white]", border_style=border_col, expand=False))
+        console.print(summary_table)
 
-        if all_issues:
-            sec_pct = (security / len(all_issues)) * 100
-            console.print(f"\n[bold white]Security Density:[/bold white] {sec_pct:.1f}%")
+        # 🏆 Celebration for Perfect Health
+        if success_rate == 100 and active_issues == 0:
+            console.print(Panel(
+                "[bold green]🎉 CONGRATULATIONS! Your infrastructure is optimized.[/bold green]\n"
+                "[white]No active logic gaps or security threats were detected.[/white]",
+                title="✨ [bold gold1]ELITE STATUS[/bold gold1]",
+                border_style="green",
+                expand=False,
+                padding=(1, 4)
+            ))
+        
+        if api_rot > 0 and command == "scan":
+            console.print(Panel(f"✨ [bold green]Healer Tip:[/bold green] {api_rot} automated repairs are available. Run [bold cyan]kubecuro fix[/bold cyan] to heal these manifests.", border_style="green"))
 
-        if api_rot > 0:
-            console.print(Panel(f"💡 [bold]Healer Tip:[/bold] {api_rot} API deprecations found. Run [bold cyan]kubecuro fix[/bold cyan] to upgrade them automatically.", border_style="blue"))
-
-        if len(reporting_issues) > 20 and not HAS_BASELINE:
-            console.print("\n[bold yellow]💡 Pro-Tip:[/bold yellow] Found a lot of existing debt? Run [bold cyan]kubecuro baseline .[/bold cyan] to suppress these and focus on new changes moving forward.")
+        duration = round(time.time() - start_time, 2)
+        console.print(f"\n[dim]Audit completed in {duration}s | Files: {len(files)}[/dim]\n")
 
 if __name__ == "__main__":
     run()
