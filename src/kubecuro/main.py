@@ -303,26 +303,53 @@ class AuditEngine:
                           border_style="green" if score > 90 else "yellow"))
     
     def _execute_fixes(self, issues: List[AuditIssue]):
-        """Execute healing pipeline."""
+        """Execute healing pipeline with proper content validation."""
         files = self._find_yaml_files()
+        fixed_count = 0
+        
         for fpath in files:
-            fixed, _ = linter_engine(str(fpath), dry_run=self.dry_run)
-            if fixed:
-                self._apply_fix(fpath, fixed)
+            with open(fpath, 'r') as f:
+                original_content = f.read()
+            
+            fixed_content, _ = linter_engine(str(fpath), dry_run=True, return_content=True)
+            
+            # 🔑 VALIDATE CONTENT BEFORE WRITING
+            if isinstance(fixed_content, str) and fixed_content.strip() and fixed_content.strip() != original_content.strip():
+                self._apply_fix(fpath, original_content, fixed_content)
+                fixed_count += 1
+            else:
+                console.print(f"[dim]ℹ️  {fpath.name}: No fixes needed[/]")
+        
+        console.print(f"[bold green]✨ Completed: {fixed_count}/{len(files)} files fixed[/]")
+
     
-    def _apply_fix(self, fpath: Path, fixed_content: str):
-        """Atomically apply fix."""
-        if self.dry_run:
-            console.print(f"[cyan]DRY-RUN: Would fix {fpath.name}[/]")
+    def _apply_fix(self, fpath: Path, original_content: str):
+        """Atomically apply fix with proper content validation."""
+        fixed_content, _ = linter_engine(str(fpath), dry_run=True, return_content=True)
+        
+        # 🔑 VALIDATE: linter_engine must return string content
+        if not isinstance(fixed_content, str) or fixed_content.strip() == "":
+            console.print(f"[yellow]⚠️ No fixes available for {fpath.name}[/]")
             return
         
+        if fixed_content.strip() == original_content.strip():
+            console.print(f"[dim]ℹ️  {fpath.name} already optimal[/]")
+            return
+        
+        # Atomic backup + replace (CNCF-grade safe)
         backup = fpath.with_suffix('.yaml.backup')
         fpath.rename(backup)
         
-        with open(fpath, 'w') as f:
-            f.write(fixed_content)
-        
-        console.print(f"[green]✅ FIXED: {fpath.name}[/]")
+        try:
+            with open(fpath, 'w') as f:
+                f.write(fixed_content)  # ✅ Guaranteed string
+            console.print(f"[bold green]✅ FIXED: {fpath.name}[/]")
+        except Exception as e:
+            # Rollback on failure
+            fpath.unlink(missing_ok=True)
+            backup.rename(fpath)
+            console.print(f"[bold red]❌ Fix failed: {e}[/]")
+
 
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
