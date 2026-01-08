@@ -381,8 +381,10 @@ def run():
                 if args.shell == "bash":
                     print('complete -o default -o nospace -C "kubecuro" "kubecuro"')
                 else:
-                    # Zsh specific autoload
-                    print('autoload -U compinit && compinit\npath_to_kubecuro=$(which kubecuro)\ncomplete -o default -o nospace -C "$path_to_kubecuro" "kubecuro"')
+                    # Simpler Zsh approach that works with most modern Oh-My-Zsh setups
+                    print('autoload -U compinit && compinit')
+                    print('complete -o default -o nospace -C "kubecuro" "kubecuro"')
+                    
         return
 
     if args.help or (not args.command and not args.version and not unknown):
