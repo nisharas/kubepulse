@@ -214,7 +214,8 @@ class KubecuroCLI:
     
     def _handle_explain(self, args):
         """Deep dive into a specific rule logic."""
-        search_id = getattr(args, 'resource', '').upper()
+        resource_val = getattr(args, 'resource', '') or ''
+        search_id = resource_val.upper()
         
         rule_data = None
         for cat in CONFIG.RULES_REGISTRY.values():
