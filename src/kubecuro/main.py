@@ -487,87 +487,93 @@ class AuditEngineV2:
                 console.print("[bold green]✅ Nothing to fix![/]")
                 return
             self._execute_zero_downtime_fixes()
-    
+      
     def audit(self) -> List[AuditIssue]:
-        """Full pipeline: Synapse → Shield → Healer - FIXED HEALER PARSING."""
-        syn = Synapse()
-        shield = Shield()
-        issues = []
-        seen = set()
-        
-        files = self._find_yaml_files()
-        if not files:
-            return []
-        
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold green]{task.description}"),
-            MofNCompleteColumn(),
-            console=console
-        ) as progress:
-            task = progress.add_task(f"Auditing {len(files)} files...", total=len(files))
+            """Full pipeline: Synapse → Shield → Healer with Smooth UX."""
+            syn = Synapse()
+            shield = Shield()
+            issues = []
+            seen = set()
             
-            for fpath in files:
-                fname = fpath.name
-                syn.scan_file(str(fpath))
+            files = self._find_yaml_files()
+            if not files:
+                return []
+            
+            # ✅ UPGRADED: Added transient=True and Spinner/Text Columns for better UX
+            with Progress(
+                SpinnerColumn(spinner_name="dots"),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(bar_width=40, pulse_style="magenta"),
+                MofNCompleteColumn(),
+                console=console,
+                transient=True  # 👈 This makes the bar vanish before the tables print
+            ) as progress:
                 
-                # Shield rules
-                docs = [d for d in syn.all_docs if d.get('_origin_file') == str(fpath)]
-                for doc in docs:
-                    for finding in shield.scan(doc, syn.all_docs):
-                        code = str(finding['code']).upper()
-                        line = finding.get('line', 1)
-                        ident = f"{fname}:{line}:{code}"
-                        if ident not in seen:
-                            issues.append(AuditIssue(
-                                code=code,
-                                severity=finding.get('severity', '🟡 MEDIUM'),
-                                file=fname,
-                                message=finding['msg'],
-                                line=line
-                            ))
-                            seen.add(ident)
+                task = progress.add_task(f"[cyan]Initializing audit...", total=len(files))
                 
-                # Healer codes - FIXED PARSING (Safe IndexError protection)
-                if not os.getenv('PYTEST_CURRENT_TEST'):
-                    try:
-                        _, codes = linter_engine(str(fpath), dry_run=True, return_content=True, apply_defaults=self.apply_defaults)
-                        for code in codes:
-                            parts = str(code).split(":")
-                            ccode = parts[0].upper()
-                            # ✅ FIX #3: Safe line parsing
-                            line = int(parts[1]) if len(parts) > 1 and parts[1].strip() else 1
-                            ident = f"{fname}:{line}:{ccode}"
-                            
-                            # Custom message mapping for better UX
-                            msg = f"Healer: {ccode}"
-                            if ccode == "OOM_RISK":
-                                msg = "Container missing resource limits (Risk of OOMKill)"
-                            elif ccode == "OOM_FIXED":
-                                msg = "Conservative resource limits applied (Requires tuning)"
-                                
+                for fpath in files:
+                    fname = fpath.name
+                    # ✅ Update description dynamically to show progress
+                    progress.update(task, description=f"[bold blue]Scanning:[/] [dim]{fname}[/]")
+                    
+                    syn.scan_file(str(fpath))
+                    
+                    # Shield rules
+                    docs = [d for d in syn.all_docs if d.get('_origin_file') == str(fpath)]
+                    for doc in docs:
+                        for finding in shield.scan(doc, syn.all_docs):
+                            code = str(finding['code']).upper()
+                            line = finding.get('line', 1)
+                            ident = f"{fname}:{line}:{code}"
                             if ident not in seen:
                                 issues.append(AuditIssue(
-                                    code=ccode,
-                                    severity="🟡 MEDIUM",
+                                    code=code,
+                                    severity=finding.get('severity', '🟡 MEDIUM'),
                                     file=fname,
-                                    message=f"Healer: {ccode}",
+                                    message=finding['msg'],
                                     line=line
                                 ))
                                 seen.add(ident)
-                    except Exception:
-                        pass  # Silent fail during tests
-                
-                progress.advance(task)
-        
-        # Cross-resource audit
-        for issue in syn.audit():
-            ident = f"{issue.file}:{issue.line}:{issue.code}"
-            if ident not in seen:
-                issues.append(issue)
-                seen.add(ident)
-        
-        return issues
+                    
+                    # Healer codes
+                    if not os.getenv('PYTEST_CURRENT_TEST'):
+                        try:
+                            _, codes = linter_engine(str(fpath), dry_run=True, return_content=True, apply_defaults=self.apply_defaults)
+                            for code in codes:
+                                parts = str(code).split(":")
+                                ccode = parts[0].upper()
+                                line = int(parts[1]) if len(parts) > 1 and parts[1].strip() else 1
+                                ident = f"{fname}:{line}:{ccode}"
+                                
+                                # Custom message mapping
+                                msg = f"Healer: {ccode}"
+                                if ccode == "OOM_RISK":
+                                    msg = "Container missing resource limits (Risk of OOMKill)"
+                                elif ccode == "OOM_FIXED":
+                                    msg = "Conservative resource limits applied"
+                                    
+                                if ident not in seen:
+                                    issues.append(AuditIssue(
+                                        code=ccode,
+                                        severity="🟡 MEDIUM",
+                                        file=fname,
+                                        message=msg, # Using the mapped msg
+                                        line=line
+                                    ))
+                                    seen.add(ident)
+                        except Exception:
+                            pass 
+                    
+                    progress.advance(task)
+            
+            # Cross-resource audit (outside progress bar)
+            for issue in syn.audit():
+                ident = f"{issue.file}:{issue.line}:{issue.code}"
+                if ident not in seen:
+                    issues.append(issue)
+                    seen.add(ident)
+            
+            return issues
     
     def _find_yaml_files(self) -> List[Path]:
         """Smart YAML discovery."""
@@ -621,25 +627,56 @@ class AuditEngineV2:
         for issue in issues:
             by_file.setdefault(issue.file, []).append(issue)
         return by_file
-    
+
     def _render_file_table(self, issues: List[AuditIssue]):
-        """Rich per-file issue table."""
-        table = Table(box="HEAVY_HEAD", padding=(0, 1), expand=True)
-        table.add_column("Severity", width=12, style="bold magenta")
-        table.add_column("Line", width=6, justify="right")
-        table.add_column("Code", width=14, style="bold red")
-        table.add_column("Issue", style="white")
+        """Rich per-file table with integrated summary footer."""
+    
+        # 1. Pre-calculate totals for the footer
+        total = len(issues)
+        high_count = sum(1 for i in issues if "HIGH" in i.severity.upper() or "CRITICAL" in i.severity.upper())
+
+        # 2. Define the Table with Footer enabled
+        table = Table(
+            box=box.HEAVY_HEAD, 
+            padding=(0, 1), 
+            expand=True,
+            show_footer=True,
+            footer_style="bold dim"
+        )
+    
+        # Severity Column: Shows total issues in the footer
+        table.add_column("Severity", width=14, style="bold", footer=f"Σ {total} Issues")
         
+        # Line Column: Empty footer
+        table.add_column("Line", width=6, justify="right", style="dim")
+        
+        # Code Column: Highlights if high-risk issues exist
+        code_footer = f"[bold red]⚠ {high_count} HIGH[/]" if high_count > 0 else "[green]CLEAN[/]"
+        table.add_column("Code", width=16, style="bold cyan", footer=code_footer)
+        
+        # Issue Column: General status
+        table.add_column("Issue", style="white", footer="File Health Analysis Complete")
+        
+        # 3. Populate Rows
         for issue in sorted(issues, key=lambda x: x.line or 0):
-            color_map = {"HIGH": "red", "MEDIUM": "yellow", "LOW": "green"}
-            color = color_map.get(issue.severity, "white")
+            sev_upper = issue.severity.upper()
+            if "CRITICAL" in sev_upper:
+                color = "bright_red"
+            elif "HIGH" in sev_upper:
+                color = "orange3"
+            elif "MEDIUM" in sev_upper:
+                color = "yellow"
+            else:
+                color = "green"
+                
             table.add_row(
                 f"[{color}]{issue.severity}[/{color}]",
                 str(issue.line or "-"),
                 issue.code,
                 issue.message
             )
-        console.print(table)
+            
+        self.console.print(table)
 
     def _health_score_panel(self, issues: List[AuditIssue]):
         """
