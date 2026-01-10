@@ -827,15 +827,19 @@ def create_parser() -> argparse.ArgumentParser:
     # 🎨 S-Tier Styling
     pos_title = "\033[1;35mPositional Arguments\033[0m"
     opt_title = "\033[1;36mOptions\033[0m"
+
+    # Using .strip() on the description removes the leading/trailing newlines 
+    # that triple quotes (""") naturally introduce.
+    description=f"""
+\033[1;35mKubeCuro {CONFIG.VERSION}\033[0m - \033[3mKubernetes Logic Diagnostics & YAML Auto-Healer\033[0m
+══════════════════════════════════════════════════════════════════
+    """.strip()
     
     # Use raw description to preserve our manual formatting in epilog
     parser = argparse.ArgumentParser(
         prog="kubecuro",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description=f"""
-\033[1;35mKubeCuro {CONFIG.VERSION}\033[0m - \033[3mKubernetes Logic Diagnostics & YAML Auto-Healer\033[0m
-═══════════════════════════════════════════════════════════════
-    """,
+        description=description,
         add_help=False, # Manually adding to the Options group
         epilog=f"""
 \033[1;33m🛠️  Usage Examples:\033[0m
