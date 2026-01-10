@@ -7,12 +7,27 @@ PURPOSE:         The Shield Engine: API Deprecation, Resource Stability,
                   and RBAC Security Guard.
 --------------------------------------------------------------------------------
 """
-
 class Shield:
-    """The Stability Engine: Protects against outdated APIs, insecure RBAC, and misconfigured HPA logic."""
+    """The Stability Engine: Standardized with Professional Severity Levels."""
     
+    # --- Standardized Severity Constants ---
+    # Used to ensure consistency across all scan methods
+    CRITICAL = "🔴 CRITICAL"  # Immediate failure/outage risk
+    HIGH     = "🟠 HIGH"      # Major security risk
+    MEDIUM   = "🟡 MEDIUM"    # Deprecations/Best practices
+    LOW      = "🔵 INFO"      # Hardening/Audit suggestions
+
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+
+    def add_finding(self, code, severity, msg, line):
+        """Helper to standardize finding structure."""
+        return {
+            "code": code.upper(),
+            "severity": severity,
+            "msg": msg,
+            "line": line
+        }
     
     # Comprehensive Database of retired/deprecated APIs (unchanged)
     DEPRECATIONS = {
@@ -57,51 +72,61 @@ class Shield:
             return 1
 
     def scan(self, doc: dict, all_docs: list = None) -> list:
+        """
+        Analyzes a single Kubernetes resource against logic rules.
+        """
         if not doc or not isinstance(doc, dict):
             self.logger.debug("Empty or invalid document skipped")
             return []
-
+    
+        # Get the starting line of the resource for fallback
         base_line = self.get_line(doc)
         raw_findings = []
-
-        # 1. API Version & Pod Security Checks
+    
+        # 1. API Version & Pod Security (Triggers: ROOT_USER_UID, PRIV_ESC_TRUE, RO_ROOT_FS)
         raw_findings.extend(self.check_version_and_security(doc))
         
-        # 2. RBAC Specific Security Checks
+        # 2. RBAC Specific Security Checks (Triggers: RBAC_WILD_RES)
         raw_findings.extend(self.check_rbac_security(doc))
-
-        # 3. RESOURCE LIMITS
+    
+        # 3. RESOURCE LIMITS (Triggers: HPA_MISS_REQ)
         raw_findings.extend(self.check_limits(doc))
         
-        # 4. Cross-Resource Logic (HPA & Ingress)
+        # 4. Cross-Resource Logic (Triggers: GHOST_SELECT, SVC_PORT_MISS)
         if all_docs:
+            # Note: Some HPA checks require looking at the Target Deployment
             raw_findings.extend(self.audit_hpa(doc, all_docs))
             raw_findings.extend(self.check_ingress_service_alignment(doc, all_docs))
-
+    
         # --- Line Number Attachment & Consistency Check ---
+        # This ensures the UI points to the correct line in the IDE
         for f in raw_findings:
-            if 'line' not in f or f['line'] is None or f['line'] <= 0:
+            # Normalize code to uppercase to match CONFIG
+            if 'code' in f:
+                f['code'] = f['code'].upper()
+                
+            if f.get('line') is None or f.get('line', 0) <= 0:
                 f['line'] = base_line
         
-        return raw_findings  # ✅ FIXED: Return raw_findings
-       
+        return raw_findings
+
     def check_limits(self, doc):
-        """Fix 5: Detects missing resource limits to prevent OOMKills."""
+        """Detects missing resource limits to prevent OOMKills."""
         findings = []
         if doc.get('kind') in ['Deployment', 'StatefulSet', 'DaemonSet', 'Job']:
             spec = doc.get('spec', {}) or {}
-            template = spec.get('template', {}) or {}
-            t_spec = template.get('spec', {}) or {}
+            t_spec = spec.get('template', {}).get('spec', {}) or {}
             
             for c in t_spec.get('containers', []):
                 res = c.get('resources', {}) or {}
                 if 'limits' not in res:
-                    findings.append({
-                        "code": "OOM_RISK",
-                        "severity": "🔴 CRITICAL",
-                        "msg": f"Container '{c.get('name')}' has no resource limits. One memory leak could crash the entire Node.",
-                        "line": self.get_line(c)
-                    })
+                    # Now using the helper + constants
+                    findings.append(self.add_finding(
+                        "OOM_RISK", 
+                        self.CRITICAL, 
+                        f"Container '{c.get('name')}' has no resource limits. One memory leak could crash the Node.",
+                        self.get_line(c)
+                    ))
         return findings
 
     def check_ingress_service_alignment(self, doc, all_docs):
@@ -130,131 +155,149 @@ class Shield:
                 matched_svc = next((d for d in all_docs if d.get('kind') == 'Service' 
                                    and d.get('metadata', {}).get('name') == target_svc
                                    and d.get('metadata', {}).get('namespace', 'default') == ingress_ns), None)
-    
+                    
                 if matched_svc:
-                    svc_ports = [p.get('port') for p in matched_svc.get('spec', {}).get('ports', []) if p.get('port')]
-                    if target_port and target_port not in svc_ports:
-                        findings.append({
-                            "code": "INGRESS_PORT_MISMATCH",
-                            "severity": "🔴 CRITICAL",
-                            "msg": f"Ingress '{ingress_name}' points to port {target_port}, but Service '{target_svc}' only exposes {svc_ports}.",
-                            "line": self.get_line(doc)  # ✅ FIXED: Use doc (Ingress root)
-                        })
+                      svc_spec_ports = matched_svc.get('spec', {}).get('ports', [])
+                      svc_port_numbers = [p.get('port') for p in svc_spec_ports if p.get('port')]
+                      svc_port_names = [p.get('name') for p in svc_spec_ports if p.get('name')]
+                      
+                      is_match = False
+                      if isinstance(target_port, int):
+                          if target_port in svc_port_numbers:
+                              is_match = True
+                      elif isinstance(target_port, str):
+                          if target_port in svc_port_names:
+                              is_match = True
+                      
+                      if target_port and not is_match:
+                          available = svc_port_numbers + svc_port_names
+                          # ✅ FIXED: Use add_finding and CRITICAL constant
+                          findings.append(self.add_finding(
+                              "INGRESS_PORT_MISMATCH",
+                              self.CRITICAL,
+                              f"Ingress '{ingress_name}' targets port '{target_port}', but Service '{target_svc}' only exposes {available}.",
+                              self.get_line(doc)
+                          ))
                 else:
-                    if len(all_docs) > 1:
-                        findings.append({
-                            "code": "INGRESS_ORPHAN",
-                            "severity": "🟠 WARNING",
-                            "msg": f"Ingress '{ingress_name}' points to Service '{target_svc}', but that Service was not found in this scan context.",
-                            "line": self.get_line(doc)  # ✅ FIXED: Use doc (Ingress root)
-                        })
+                    if all_docs and len(all_docs) > 1:
+                        # ✅ FIXED: Use add_finding and MEDIUM constant
+                        findings.append(self.add_finding(
+                            "INGRESS_ORPHAN",
+                            self.MEDIUM,
+                            f"Ingress '{ingress_name}' points to Service '{target_svc}', but that Service was not found in this scan context.",
+                            self.get_line(doc)
+                        ))
         return findings
 
     def check_version_and_security(self, doc: dict) -> list:
-        """Checks for retired API versions and Container Security."""
+        """Checks for retired API versions and Container Security (Privileged/Tokens)."""
         findings = []
         api = doc.get('apiVersion')
         kind = doc.get('kind', 'Object')
         name = doc.get('metadata', {}).get('name', 'unknown')
         
+        # 1. API Deprecation Check
         if api in self.DEPRECATIONS:
             mapping = self.DEPRECATIONS[api]
             better = mapping.get(kind, mapping.get("default")) if isinstance(mapping, dict) else mapping
-            findings.append({
-                "severity": "🟡 API",
-                "code": "API_DEPRECATED",
-                "msg": f"🛡️ {kind} '{name}' uses '{api}'. Upgrade to '{better}'.",
-                "line": self.get_line(doc, 'apiVersion')
-            })
+            findings.append(self.add_finding(
+                "API_DEPRECATED",
+                self.MEDIUM,
+                f"🛡️ {kind} '{name}' uses '{api}'. Upgrade to '{better}'.",
+                self.get_line(doc, 'apiVersion')
+            ))
         
+        # 2. Workload Security Checks (Pod, Deployment, etc.)
         if kind in ['Deployment', 'Pod', 'StatefulSet', 'DaemonSet']:
             spec = doc.get('spec') or {}
             template = spec.get('template') or {} if kind != 'Pod' else doc
             t_spec = template.get('spec') or {}
             
-            # Fix 3: Descriptive Security Message
+            # Check A: ServiceAccount Token Auto-mounting
             if t_spec.get('automountServiceAccountToken') is not False:
-                findings.append({
-                    "severity": "🟡 WARN",
-                    "code": "SEC_TOKEN_AUDIT",
-                    "msg": "ServiceAccount token is auto-mounting. This increases attack surface if the pod is compromised.",
-                    "line": self.get_line(t_spec, 'automountServiceAccountToken') if 'automountServiceAccountToken' in t_spec else self.get_line(doc)
-                })
+                findings.append(self.add_finding(
+                    "SEC_TOKEN_AUDIT",
+                    self.LOW,
+                    "ServiceAccount token is auto-mounting. This increases attack surface if the pod is compromised.",
+                    self.get_line(t_spec, 'automountServiceAccountToken') if 'automountServiceAccountToken' in t_spec else self.get_line(doc)
+                ))
             
+            # Check B: Privileged Containers
             for c in t_spec.get('containers', []):
                 if c.get('securityContext', {}).get('privileged'):
-                    findings.append({
-                        "severity": "🔴 HIGH",
-                        "code": "SEC_PRIVILEGED",
-                        "msg": f"🚨 Security Risk: Container '{c.get('name')}' in {kind} '{name}' is Privileged.",
-                        "line": self.get_line(c)
-                    })
+                    findings.append(self.add_finding(
+                        "SEC_PRIVILEGED",
+                        self.HIGH,
+                        f"🚨 Security Risk: Container '{c.get('name')}' in {kind} '{name}' is Privileged.",
+                        self.get_line(c)
+                    ))
+                    
         return findings
 
     def check_rbac_security(self, resource: dict) -> list:
-        """Audits RBAC for wildcard permissions and secret access."""
         findings = []
         kind = resource.get("kind")
         name = resource.get('metadata', {}).get('name', 'unknown')
         rules = resource.get("rules") or resource.get("spec", {}).get("rules", [])
-    
+
         if kind in ["Role", "ClusterRole"]:
             for rule in rules:
                 verbs = rule.get("verbs", [])
                 res_list = rule.get("resources", [])
 
                 if "*" in verbs and "*" in res_list:
-                    findings.append({
-                        "severity": "🔴 HIGH", 
-                        "code": "RBAC_WILD",
-                        "msg": f"🚨 Critical Security Risk: {kind} '{name}' uses global wildcards (*).",
-                        "line": self.get_line(rule)
-                    })
+                    findings.append(self.add_finding(
+                        "RBAC_WILD",
+                        self.HIGH,
+                        f"🚨 Security Risk: {kind} '{name}' uses global wildcards (*).",
+                        self.get_line(rule)
+                    ))
                 elif "secrets" in res_list and any(v in verbs for v in ["*", "get", "list", "watch"]):
-                     findings.append({
-                        "severity": "🟠 MED", 
-                        "code": "RBAC_SECRET",
-                        "msg": f"🛡️ Security Warning: {kind} '{name}' allows read access to Secrets.",
-                        "line": self.get_line(rule)
-                    })
+                    findings.append(self.add_finding(
+                        "RBAC_SECRET",
+                        self.MEDIUM,
+                        f"🛡️ Warning: {kind} '{name}' allows read access to Secrets.",
+                        self.get_line(rule)
+                    ))
         return findings
 
     def audit_hpa(self, hpa_doc: dict, all_docs: list) -> list:
-        """Validates HPA scales on workloads that have resource requests."""
         findings = []
         if hpa_doc.get('kind') != 'HorizontalPodAutoscaler':
             return findings
-
-        spec = hpa_doc.get('spec', {}) or {}
-        target_ref = spec.get('scaleTargetRef', {}) or {}
-        target_name = target_ref.get('name')
-        hpa_ns = hpa_doc.get('metadata', {}).get('namespace', 'default')
+    
+        spec = hpa_doc.get('spec', {})
+        target = spec.get('scaleTargetRef', {})
+        t_name = target.get('name')
         
-        resource_checks = []
-        if spec.get('targetCPUUtilizationPercentage'):
-            resource_checks.append('cpu')
-            
+        metrics = []
+        if spec.get('targetCPUUtilizationPercentage'): metrics.append('cpu')
         for m in spec.get('metrics', []):
             if m.get('type') == 'Resource':
-                res_name = m.get('resource', {}).get('name')
-                if res_name: resource_checks.append(res_name)
-        
-        if not resource_checks: return findings
-
-        target_workload = next((w for w in all_docs if w.get('metadata', {}).get('name') == target_name 
-                               and w.get('metadata', {}).get('namespace', 'default') == hpa_ns
-                               and w.get('kind') in ['Deployment', 'StatefulSet']), None)
-        
-        if target_workload:
-            containers = target_workload.get('spec', {}).get('template', {}).get('spec', {}).get('containers', [])
-            for res in set(resource_checks):
-                for c in containers:
-                    requests = c.get('resources', {}).get('requests', {}) or {}
-                    if res not in requests:
-                        findings.append({
-                            "severity": "🔴 HIGH",
-                            "code": "HPA_MISSING_REQ",
-                            "msg": f"📈 HPA Logic Error: Scales on {res}, but '{target_name}' lacks {res} requests.",
-                            "line": self.get_line(c)
-                        })
+                metrics.append(m['resource']['name'])
+    
+        workload = next((d for d in all_docs if d.get('metadata', {}).get('name') == t_name 
+                         and d.get('kind') in ['Deployment', 'StatefulSet']), None)
+    
+        if not workload:
+            # ✅ FIXED: Use add_finding and MEDIUM constant
+            findings.append(self.add_finding(
+                "HPA_ORPHAN",
+                self.MEDIUM,
+                f"HPA targets '{t_name}', but no such Deployment/StatefulSet found in this scan.",
+                self.get_line(hpa_doc)
+            ))
+            return findings
+    
+        containers = workload.get('spec', {}).get('template', {}).get('spec', {}).get('containers', [])
+        for metric in set(metrics):
+            for c in containers:
+                if metric not in c.get('resources', {}).get('requests', {}):
+                    # ✅ FIXED: Use add_finding and HIGH constant
+                    findings.append(self.add_finding(
+                        "HPA_MISSING_REQ",
+                        self.HIGH,
+                        f"HPA scales on {metric}, but container '{c.get('name')}' lacks {metric} requests.",
+                        self.get_line(c)
+                    ))
         return findings
