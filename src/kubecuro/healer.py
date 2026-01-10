@@ -185,7 +185,9 @@ class Healer:
                     else:
                         healed_parts.append(doc_str.strip())
                 except Exception as e:
-                    logger.warning(f"Failed to parse YAML doc in {file_path}: {e}")
+                    # Get just the first line of the error (usually the most helpful part of a YAML error)
+                    err_msg = str(e).split('\n')[0]
+                    logger.warning(f"⏩ Skipping doc in {file_path}: {err_msg}")
                     healed_parts.append(doc_str.strip())
                 
                 actual_lines = len(doc_str.splitlines())
