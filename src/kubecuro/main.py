@@ -37,6 +37,7 @@ from rich.columns import Columns
 from rich.traceback import install as rich_traceback
 from rich import box
 from rich.console import Group
+from rich.padding import Padding
 from rich.progress import (
     Progress, 
     SpinnerColumn, 
