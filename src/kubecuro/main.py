@@ -833,9 +833,9 @@ def create_parser() -> argparse.ArgumentParser:
         prog="kubecuro",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=f"""
-\033[1;35mKubeCuro {CONFIG.VERSION}\033[0m
+\033[1;35mKubeCuro {CONFIG.VERSION}\033[0m - \033[3m Kubernetes Logic Diagnostics & YAML Auto-Healer\033[0m
 ═══════════════════════════════════════════════════════════════
-\033[3m🔍 Kubernetes Logic Diagnostics & YAML Auto-Healer\033[0m
+
     """,
         add_help=False, # Manually adding to the Options group
         epilog=f"""
@@ -853,9 +853,9 @@ def create_parser() -> argparse.ArgumentParser:
     options_group = parser.add_argument_group(opt_title)
     options_group.add_argument("-h", "--help", action="help", help="Show this help message and exit")
     options_group.add_argument("-v", "--version", action="store_true", help="Show version and exit")
-    options_group.add_argument("--dry-run", action="store_true", help="Preview changes (no disk write)")
     options_group.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompts")
     options_group.add_argument("--all", action="store_true", help="Show baseline/suppressed issues")
+    options_group.add_argument("--dry-run", action="store_true", help="Preview changes (no disk write)")    
     options_group.add_argument("--apply-defaults", action="store_true", help="Inject conservative defaults (e.g. CPU/Mem limits) if missing")
 
     # 2. Standardize Commands Group
