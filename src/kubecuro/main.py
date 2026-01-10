@@ -833,9 +833,8 @@ def create_parser() -> argparse.ArgumentParser:
         prog="kubecuro",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=f"""
-\033[1;35mKubeCuro {CONFIG.VERSION}\033[0m - \033[3m Kubernetes Logic Diagnostics & YAML Auto-Healer\033[0m
+\033[1;35mKubeCuro {CONFIG.VERSION}\033[0m - \033[3mKubernetes Logic Diagnostics & YAML Auto-Healer\033[0m
 ═══════════════════════════════════════════════════════════════
-
     """,
         add_help=False, # Manually adding to the Options group
         epilog=f"""
