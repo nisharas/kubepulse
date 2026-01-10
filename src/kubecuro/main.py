@@ -684,7 +684,7 @@ class AuditEngineV2:
                 issue.message
             )
             
-        self.console.print(table)
+        console.print(table)
 
     def _health_score_panel(self, issues: List[AuditIssue]):
         """
