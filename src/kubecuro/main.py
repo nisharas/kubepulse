@@ -527,11 +527,11 @@ def create_parser() -> argparse.ArgumentParser:
     scan_p = subparsers.add_parser("scan", help="🔍\u00A0 Deep YAML logic analysis")
     scan_p.add_argument("target", nargs="?", help="Path to scan")
     
-    fix_p = subparsers.add_parser("fix", help="❤️\u00A0 Auto-heal YAML files")
+    fix_p = subparsers.add_parser("fix", help="❤️\u00A0  Auto-heal YAML files")
     fix_p.add_argument("target", nargs="?", help="Path to fix")
     
     # Power-user commands
-    subparsers.add_parser("baseline", help="🛡️\u00A0 Suppress known issues")
+    subparsers.add_parser("baseline", help="🛡️\u00A0  Suppress known issues")
     subparsers.add_parser("checklist", help="📋\u00A0 Show all rules")
     
     explain_p = subparsers.add_parser("explain", help="💡\u00A0 Explain rules")
