@@ -33,6 +33,7 @@ from rich.syntax import Syntax
 from rich.rule import Rule
 from rich.layout import Layout
 from rich.text import Text
+from rich.align import Align
 from rich.columns import Columns
 from rich.traceback import install as rich_traceback
 from rich import box
