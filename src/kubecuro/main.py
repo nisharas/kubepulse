@@ -491,7 +491,7 @@ class AuditEngineV2:
             f"sys.stderr=open('/dev/null','w'); "
             f"from kubecuro.healer import linter_engine; "
             f"content,codes=linter_engine('{fpath}',dry_run=True,return_content=True,apply_defaults={self.apply_defaults});"
-            f"print(json.dumps({'content':str(content),'codes':[str(c) for c in codes]}))"
+            f"import json; print(json.dumps({{'content':str(content),'codes':[str(c) for c in codes]}}))"
         ]
         
         try:
@@ -667,7 +667,7 @@ class AuditEngineV2:
                                 ))
                                 seen.add(ident)
             except Exception as e:
-                logger.debug(f"Issue collection failed for {fname}: {e}")
+                console.print(f"[dim]Issue collection failed for {fname}: {e}[/dim]")
         
         devnull.close()
         
