@@ -55,6 +55,20 @@ from kubecuro.healer import linter_engine
 from kubecuro.synapse import Synapse
 from kubecuro.shield import Shield
 from kubecuro.models import AuditIssue
+
+# ========== KUBECURO FREEMIUM GATE ==========
+PRO_RULES = {
+    "VPA_CONFLICT", "NETPOL_LEAK", "PDB_MISSING", 
+    "CRONJOB_LIMITS", "DAEMONSET_AFFINITY", 
+    "INGRESS_TLS", "PVC_RECLAIM", "NODEPORT_EXPOSED"
+}
+
+def is_pro_user():
+    """Check if user has PRO license"""
+    license_key = os.getenv("KUBECURO_PRO")
+    return license_key in ["1", "unlocked", "pro"]
+# ===========================================
+
         
 # S-Tier Setup
 rich_traceback(console=Console(file=sys.stderr), show_locals=True, width=120)
@@ -555,7 +569,12 @@ class AuditEngineV2:
                             code = str(finding['code']).upper()
                             line = finding.get('line', 1)
                             ident = f"{fname}:{line}:{code}"
-                            if ident not in seen:
+                            # Hide PRO rules from free users
+                            if code in PRO_RULES and not is_pro_user():  # Location 1 & 2
+                            # OR
+                            if issue.code in PRO_RULES and not is_pro_user():  # Location 3
+                                console.print(f"[bold yellow]🔒 PRO RULE: {code or issue.code} (fixmyk8s.com/pro)[/]")
+                                continue  # 👈 CORRECT - skips adding to issues                               
                                 issues.append(AuditIssue(
                                     code=code,
                                     severity=finding.get('severity', '🟡 MEDIUM'),
@@ -573,6 +592,12 @@ class AuditEngineV2:
                                 parts = str(code).split(":")
                                 ccode = parts[0].upper()
                                 line = int(parts[1]) if len(parts) > 1 and parts[1].strip() else 1
+                                # Hide PRO rules from free users
+                                if code in PRO_RULES and not is_pro_user():  # Location 1 & 2
+                                # OR
+                                if issue.code in PRO_RULES and not is_pro_user():  # Location 3
+                                    console.print(f"[bold yellow]🔒 PRO RULE: {code or issue.code} (fixmyk8s.com/pro)[/]")
+                                    continue  # 👈 CORRECT - skips adding to issues                                
                                 ident = f"{fname}:{line}:{ccode}"
                                 
                                 # Custom message mapping
@@ -602,7 +627,12 @@ class AuditEngineV2:
             # Cross-resource audit (outside progress bar)
             for issue in syn.audit():
                 ident = f"{issue.file}:{issue.line}:{issue.code}"
-                if ident not in seen:
+                # Hide PRO rules from free users
+                if code in PRO_RULES and not is_pro_user():  # Location 1 & 2
+                # OR
+                if issue.code in PRO_RULES and not is_pro_user():  # Location 3
+                    console.print(f"[bold yellow]🔒 PRO RULE: {code or issue.code} (fixmyk8s.com/pro)[/]")
+                    continue  # 👈 CORRECT - skips adding to issues
                     issues.append(issue)
                     seen.add(ident)
             
