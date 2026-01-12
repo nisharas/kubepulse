@@ -17,6 +17,7 @@ import difflib
 import argcomplete
 import random
 import contextlib
+import subprocess
 
 from pathlib import Path
 from typing import List, Optional, Dict, Any
@@ -482,27 +483,25 @@ class AuditEngineV2:
     """Production-grade analysis + healing engine."""
 
     def _silent_healer(self, fpath: str) -> tuple[str|None, list]:
-    """100% silent healer - subprocess isolation."""
-    import subprocess
-    import json
-    
-    cmd = [
-        sys.executable, '-c',
-        f"import sys,logging; logging.disable(logging.CRITICAL+1); "
-        f"sys.stderr=open('/dev/null','w'); "
-        f"from healer import linter_engine; "
-        f"content,codes=linter_engine('{fpath}',dry_run=True,return_content=True,apply_defaults={self.apply_defaults});"
-        f"print(json.dumps({'content':str(content),'codes':[str(c) for c in codes]}))"
-    ]
-    
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        if result.returncode == 0:
-            data = json.loads(result.stdout.strip())
-            return data['content'], data['codes']
-    except:
-        pass
-    return None, []
+        """100% silent healer - subprocess isolation."""
+        
+        cmd = [
+            sys.executable, '-c',
+            f"import sys,logging; logging.disable(logging.CRITICAL+1); "
+            f"sys.stderr=open('/dev/null','w'); "
+            f"from kubecuro.healer import linter_engine; "
+            f"content,codes=linter_engine('{fpath}',dry_run=True,return_content=True,apply_defaults={self.apply_defaults});"
+            f"print(json.dumps({'content':str(content),'codes':[str(c) for c in codes]}))"
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                data = json.loads(result.stdout.strip())
+                return data['content'], data['codes']
+        except:
+            pass
+        return None, []
     
     def __init__(self, target: Path, dry_run: bool, yes: bool, show_all: bool, baseline: set, apply_defaults: bool = False):
         self.target = Path(target)
