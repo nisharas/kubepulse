@@ -525,7 +525,12 @@ class AuditEngineV2:
                 console.print(Align.center("[bold green]✅ Nothing to fix - Cluster is healthy![/]"))
                 return
             console.print(f"[bold cyan]🚀 {'DRY-RUN' if self.dry_run else 'LIVE FIX MODE'}[/]")
-            self._execute_zero_downtime_fixes()
+            # NEW: Show what would be fixed (DRY-RUN) or fix it (LIVE)
+            if self.dry_run:
+                console.print("\n[bold yellow]📋 Issues that WOULD be analyzed:[/]")
+                self._render_file_table(reporting_issues)  # Show actual issues!
+            else:
+                self._execute_zero_downtime_fixes()
       
     def audit(self) -> List[AuditIssue]:
             """Full pipeline: Synapse → Shield → Healer with Smooth UX."""
