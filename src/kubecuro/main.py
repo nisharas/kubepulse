@@ -542,89 +542,126 @@ class AuditEngineV2:
         files = self._find_yaml_files()
         if not files:
             return []
-
-        console.print(f"[bold cyan]🔍 Analyzing {len(files)} manifests...[/]")
-
+    
+        # 🆕 SMART PROGRESS: Summary for 100+ files, detailed for <20
+        SUMMARY_THRESHOLD = 20
+        if len(files) > SUMMARY_THRESHOLD:
+            console.print(f"[bold cyan]🔍 Analyzing {len(files)} manifests (summary mode)...[/]")
+            show_progress = False
+        else:
+            console.print(f"[bold cyan]🔍 Analyzing {len(files)} manifests...[/]")
+            show_progress = True
+        
+        # 🆕 SUPPRESS HEALER LOGGER NOISE
+        import contextlib
+        devnull = open(os.devnull, 'w')
+        
+        problematic_files = []  # Track files with issues for summary
         
         for i, fpath in enumerate(files, 1):
             fname = fpath.name
             status_color = "green"
             abs_fpath = fpath.resolve()
             fname_full = str(abs_fpath)
+            has_issues = False
             
-            # 1️⃣ STATUS CHECK
+            # 1️⃣ STATUS CHECK (Silent healer)
             try:
-                syn.scan_file(str(fpath))
-                docs = [d for d in syn.all_docs if d.get('_origin_file') == str(fpath)]
-                shield_issues = sum(1 for doc in docs for _ in shield.scan(doc, syn.all_docs))
-                
-                if not os.getenv('PYTEST_CURRENT_TEST'):
-                    _, codes = linter_engine(str(abs_fpath), dry_run=True, return_content=True, apply_defaults=self.apply_defaults)
-                    healer_issues = len([c for c in codes if not c.startswith('OOM_FIXED')])
-                else:
-                    healer_issues = 0
-                
-                total_issues = shield_issues + healer_issues
-                if total_issues > 0:
-                    status_color = "yellow"
+                with contextlib.redirect_stderr(devnull):
+                    syn.scan_file(str(fpath))
+                    docs = [d for d in syn.all_docs if d.get('_origin_file') == str(fpath)]
+                    shield_issues = sum(1 for doc in docs for _ in shield.scan(doc, syn.all_docs))
+                    
+                    if not os.getenv('PYTEST_CURRENT_TEST'):
+                        _, codes = linter_engine(str(abs_fpath), dry_run=True, return_content=True, apply_defaults=self.apply_defaults)
+                        healer_issues = len([c for c in codes if not c.startswith('OOM_FIXED')])
+                        # 🆕 SYNTAX ERROR DETECTION
+                        has_syntax_error = any("SYNTAX_ERROR" in str(c) for c in codes)
+                    else:
+                        healer_issues = has_syntax_error = 0
+                    
+                    total_issues = shield_issues + healer_issues
+                    if total_issues > 0 or has_syntax_error:
+                        has_issues = True
+                        status_color = "red" if has_syntax_error else "yellow"
             except Exception:
                 status_color = "red"
+                has_issues = True
             
-            # 2️⃣ PRINT PROGRESS (ALWAYS - OUTSIDE try/except)
-            console.print(f"  [{i:2d}/{len(files)}] [dim]{fname:<35}[/] [bold {status_color}]✓[/]")
+            # 🆕 PROGRESS SUMMARY (Hundreds of files)
+            if show_progress:
+                console.print(f"  [{i:2d}/{len(files)}] [dim]{fname:<35}[/] [bold {status_color}]✓[/]")
+            elif has_issues and len(problematic_files) < 10:  # Show first 10 problematic
+                console.print(f"  ⚠️  [dim]{fname:<35}[/] [bold {status_color}]✗[/]")
+                problematic_files.append(fname)
             
-            # 3️⃣ COLLECT ISSUES (SEPARATE try block)
+            # 2️⃣ COLLECT ISSUES (Silent healer)
             try:
-                # Shield rules
-                docs = [d for d in syn.all_docs if d.get('_origin_file') == str(fpath)]
-                for doc in docs:
-                    for finding in shield.scan(doc, syn.all_docs):
-                        code = str(finding['code']).upper()
-                        line = finding.get('line', 1)
-                        ident = f"{fname_full}:{line}:{code}"
-                        if code in PRO_RULES and not is_pro_user():
-                            console.print(f"[bold yellow]🔒 PRO RULE: {code} (fixmyk8s.com/pro)[/]")
-                            continue
-                        if ident not in seen:
-                            issues.append(AuditIssue(
-                                code=code, severity=finding.get('severity', '🟡 MEDIUM'),
-                                file=fname_full, message=finding['msg'], line=line
-                            ))
-                            seen.add(ident)
-                
-                # Healer codes
-                if not os.getenv('PYTEST_CURRENT_TEST'):
-                    _, codes = linter_engine(str(abs_fpath), dry_run=True, return_content=True, apply_defaults=self.apply_defaults)
-                    for code in codes:
-                        parts = str(code).split(":")
-                        ccode = parts[0].upper()
-                        line = int(parts[1]) if len(parts) > 1 and parts[1].strip() else 1
-                        ident = f"{fname_full}:{line}:{ccode}"
-                        if ccode in PRO_RULES and not is_pro_user():
-                            console.print(f"[bold yellow]🔒 PRO RULE: {ccode} (fixmyk8s.com/pro)[/]")
-                            continue
-                        if ccode == "SYNTAX_ERROR":
-                            msg = "CRITICAL: YAML Syntax error prevents logic analysis"
-                        elif ccode == "OOM_RISK":
-                            msg = "Container missing resource limits (Risk of OOMKill)"
-                        elif ccode == "OOM_FIXED":
-                            msg = "Conservative resource limits applied"
-                        else:
-                            msg = f"Healer Recommendation: {ccode}"
-                        if ident not in seen:
-                            issues.append(AuditIssue(
-                                code=ccode, severity="🟡 MEDIUM", file=fname_full, message=msg, line=line
-                            ))
-                            seen.add(ident)
+                with contextlib.redirect_stderr(devnull):
+                    # Shield rules
+                    docs = [d for d in syn.all_docs if d.get('_origin_file') == str(fpath)]
+                    for doc in docs:
+                        for finding in shield.scan(doc, syn.all_docs):
+                            code = str(finding['code']).upper()
+                            line = finding.get('line', 1)
+                            ident = f"{fname_full}:{line}:{code}"
+                            if code in PRO_RULES and not is_pro_user():
+                                continue  # Silent PRO skip
+                            if ident not in seen:
+                                issues.append(AuditIssue(
+                                    code=code, severity=finding.get('severity', 'HIGH'),
+                                    file=fname_full, message=finding['msg'], line=line
+                                ))
+                                seen.add(ident)
+                    
+                    # Healer codes
+                    if not os.getenv('PYTEST_CURRENT_TEST'):
+                        _, codes = linter_engine(str(abs_fpath), dry_run=True, return_content=True, apply_defaults=self.apply_defaults)
+                        for code in codes:
+                            parts = str(code).split(":")
+                            ccode = parts[0].upper()
+                            line = int(parts[1]) if len(parts) > 1 and parts[1].strip() else 1
+                            ident = f"{fname_full}:{line}:{ccode}"
+                            if ccode in PRO_RULES and not is_pro_user():
+                                continue  # Silent PRO skip
+                                
+                            if ccode == "SYNTAX_ERROR":
+                                msg = "CRITICAL: YAML Syntax error prevents logic analysis"
+                                severity = "CRITICAL"
+                            elif ccode == "OOM_RISK":
+                                msg = "Container missing resource limits (Risk of OOMKill)"
+                                severity = "HIGH"
+                            elif ccode == "OOM_FIXED":
+                                continue  # Skip fixed ones
+                            else:
+                                msg = f"Healer Recommendation: {ccode}"
+                                severity = "MEDIUM"
+                                
+                            if ident not in seen:
+                                issues.append(AuditIssue(
+                                    code=ccode, severity=severity, file=fname_full, message=msg, line=line
+                                ))
+                                seen.add(ident)
             except Exception as e:
                 logger.debug(f"Issue collection failed for {fname}: {e}")
         
+        devnull.close()
+        
+        # 🆕 SUMMARY FOR HUNDREDS OF FILES
+        if len(files) > SUMMARY_THRESHOLD:
+            console.print(f"\n[bold cyan]📊 SUMMARY:[/]")
+            console.print(f"  🟢 Clean: {len(files) - len(problematic_files)} files")
+            if problematic_files:
+                console.print(f"  🟡 Issues: {len(problematic_files)} files")
+                console.print(f"  First 10: {', '.join(problematic_files[:10])}")
+                if len(problematic_files) > 10:
+                    console.print(f"  ... and {len(problematic_files)-10} more")
+        
         console.print()  # Clean spacing before results
         
-        # 4️⃣ CROSS-RESOURCE AUDIT (final pass)
+        # 3️⃣ CROSS-RESOURCE AUDIT (final pass)
         for issue in syn.audit():
             if issue.code in PRO_RULES and not is_pro_user():
-                console.print(f"[bold yellow]🔒 PRO RULE: {issue.code} (fixmyk8s.com/pro)[/]")
                 continue
             ident = f"{issue.file}:{issue.line}:{issue.code}"
             if ident not in seen:
@@ -848,44 +885,43 @@ class AuditEngineV2:
         )
 
     def _execute_zero_downtime_fixes(self):
-        """Production-grade atomic fixes with kubectl-style progress."""
+        """Production-grade atomic fixes with smart progress."""
         files = self._find_yaml_files()
         if not files:
             console.print("[yellow]No YAML files found[/]")
             return
         
+        SUMMARY_THRESHOLD = 20
+        if len(files) > SUMMARY_THRESHOLD:
+            console.print(f"[bold cyan]❤️ Healing {len(files)} files (summary mode)...[/]")
+            show_progress = False
+        else:
+            console.print(f"[bold cyan]❤️ Healing {len(files)} files...[/]")
+            show_progress = True
+        
         if self.dry_run:
-            console.print("[cyan]🚀 DRY-RUN: Would analyze + fix files:[/]")
-            for fpath in files:
-                console.print(f"  [dim]{fpath.name}[/] → [bold cyan]PREVIEW ONLY[/]")
+            console.print("[cyan]🚀 DRY-RUN: Would analyze + fix files[/]")
+            if show_progress:
+                for fpath in files:
+                    console.print(f"  [dim]{fpath.name}[/] → [bold cyan]PREVIEW ONLY[/]")
             console.print("[bold green]✅ DRY-RUN COMPLETE - No files modified[/]")
             return
         
         fixed_count = 0
-        console.print(f"[bold cyan]❤️ Healing {len(files)} files...[/]\n")
+        problematic_files = []
         
         for i, fpath in enumerate(files, 1):
-            status_color = "green"  # Default success
             original = self._safe_read(fpath)
             fixed_content, codes = linter_engine(str(fpath), dry_run=True, return_content=True, apply_defaults=self.apply_defaults)
             
-            # Determine status color
-            if (isinstance(fixed_content, str) and fixed_content.strip() and 
-                fixed_content.strip() != original.strip()):
-                status_color = "yellow"  # Would be fixed
-            else:
-                status_color = "green"   # No changes needed
-            
-            # Print progress line
-            console.print(f"  [{i:2d}/{len(files)}] [dim]{fpath.name:<35}[/] [bold {status_color}]✓[/]")
-            
-            # Execute fix if changes needed
             if (isinstance(fixed_content, str) and fixed_content.strip() and 
                 fixed_content.strip() != original.strip()):
                 
                 if self._atomic_fix(fpath, original, fixed_content):
                     fixed_count += 1
-                    # OOM_FIXED recommendation (YOUR ORIGINAL LOGIC)
+                    problematic_files.append(fpath.name)
+                    
+                    # OOM_FIXED recommendation
                     for code in codes:
                         if "OOM_FIXED" in code:
                             try:
@@ -894,8 +930,20 @@ class AuditEngineV2:
                                 console.print(f"     [italic]Note: Admin MUST tune these values to match actual app load.[/]")
                             except IndexError:
                                 pass
+            
+            if show_progress:
+                status_color = "yellow" if problematic_files else "green"
+                console.print(f"  [{i:2d}/{len(files)}] [dim]{fpath.name:<35}[/] [bold {status_color}]✓[/]")
         
-        console.print(f"\n[bold green]✨ {fixed_count}/{len(files)} files healed![/]")
+        # 🆕 SUMMARY
+        if len(files) > SUMMARY_THRESHOLD:
+            console.print(f"\n[bold green]✨ {fixed_count}/{len(files)} files healed!")
+            if problematic_files:
+                console.print(f"Fixed: {', '.join(problematic_files[:5])}...")
+        
+        else:
+            console.print(f"\n[bold green]✨ {fixed_count}/{len(files)} files healed![/]")
+
     
     def _safe_read(self, fpath: Path) -> str:
         """Safe file read."""
