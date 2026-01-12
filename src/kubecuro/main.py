@@ -545,11 +545,7 @@ class AuditEngineV2:
         elif command == "fix":
             # If no issues were found during audit, don't bother running fixes
             if not issues:
-                if len(fnames) == 1:
-                    console.print(f"✅ [bold green]Nothing to fix - '{fnames[0]}' is healthy![/bold green]")
-                else:
-                    console.print(f"✅ [bold green]Nothing to fix - {len(fnames)} files healthy![/bold green]")
-
+                console.print(Align.center("[bold green]✅ Nothing to fix - All files healthy![/bold green]"))
                 return
             console.print(f"[bold cyan]🚀 {'DRY-RUN' if self.dry_run else 'LIVE FIX MODE'}[/]")
             # NEW: Show what would be fixed (DRY-RUN) or fix it (LIVE)
