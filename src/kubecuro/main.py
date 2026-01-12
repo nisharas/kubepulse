@@ -249,10 +249,11 @@ class KubecuroCLI:
     def _show_banner(self):
         """Clean minimal startup banner."""
         # Just show the brand name, version is now in the SCAN/FIX panels
-        banner = Text("KubeCuro", style="bold magenta", justify="center")
-        self.console.print(Align.center(banner))
-        self.console.print(Rule(style="dim magenta"))
-    
+        #banner = Text("KubeCuro", style="bold magenta", justify="center")
+        #self.console.print(Align.center(banner))
+        #self.console.print(Rule(style="dim magenta"))
+        pass
+
     def _smart_resolve_target(self, args: argparse.Namespace) -> Optional[Path]:
         """AI-powered path resolution."""
         target_val = getattr(args, 'target', None)
@@ -523,6 +524,7 @@ class AuditEngineV2:
             if not issues:
                 console.print(Align.center("[bold green]✅ Nothing to fix - Cluster is healthy![/]"))
                 return
+            console.print(f"[bold cyan]🚀 {'DRY-RUN' if self.dry_run else 'LIVE FIX MODE'}[/]")
             self._execute_zero_downtime_fixes()
       
     def audit(self) -> List[AuditIssue]:
@@ -846,12 +848,19 @@ class AuditEngineV2:
                 box=box.HORIZONTALS
             )
         )
-    
+
     def _execute_zero_downtime_fixes(self):
         """Production-grade atomic fixes."""
         files = self._find_yaml_files()
         if not files:
             console.print("[yellow]No YAML files found[/]")
+            return
+        
+        if self.dry_run:
+            console.print("[cyan]DRY-RUN: Would analyze + fix files:[/]")
+            for fpath in files:
+                console.print(f"  [dim]{fpath.name}[/] → [bold cyan]PREVIEW ONLY[/]")
+            console.print("[bold green]✅ DRY-RUN COMPLETE - No files modified[/]")
             return
         
         fixed_count = 0
