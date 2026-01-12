@@ -545,7 +545,11 @@ class AuditEngineV2:
         elif command == "fix":
             # If no issues were found during audit, don't bother running fixes
             if not issues:
-                console.print(Align.center("[bold green]✅ Nothing to fix - Cluster is healthy![/]"))
+                if len(fnames) == 1:
+                    console.print(f"✅ [bold green]Nothing to fix - '{fnames[0]}' is healthy![/bold green]")
+                else:
+                    console.print(f"✅ [bold green]Nothing to fix - {len(fnames)} files healthy![/bold green]")
+
                 return
             console.print(f"[bold cyan]🚀 {'DRY-RUN' if self.dry_run else 'LIVE FIX MODE'}[/]")
             # NEW: Show what would be fixed (DRY-RUN) or fix it (LIVE)
@@ -865,11 +869,11 @@ class AuditEngineV2:
             top_code = high[0].code
             top_file = Path(high[0].file).name  # Extract filename
             tip_title = "⚠️ CRITICAL ACTION REQUIRED"
-            # 🆕 Check if rule exists in registry before suggesting explain
-            if top_code in [rid for cat in CONFIG.RULES_REGISTRY.values() for rid in cat.keys()]:
-                tip_content = f"High-risk [bold red]{top_code}[/] in [bold cyan]{top_file}[/] line {high[0].line}. Run [bold cyan]kubecuro explain {top_code}[/] for fix."
-            else:
-                tip_content = f"High-risk [bold red]{top_code}[/] in [bold cyan]{top_file}[/]. Run [bold cyan]kubecuro fix --apply-defaults[/] to auto-fix."
+            # 🆕 Show ALL high-risk files count
+            high_files = ', '.join(Path(i.file).name for i in high[:3])  # Top 3 files
+            if len(high) > 3:
+                high_files += f" + {len(high)-3} more"
+            tip_content = f"{len(high)} high-risk files detected ({high_files}). Run [bold cyan]kubecuro fix --apply-defaults[/] to auto-fix ALL."
             tip_color = "bright_red"
         elif any(i.code == "OOM_RISK" for i in issues):
             tip_title = "💡 PERFORMANCE ADVISORY"
