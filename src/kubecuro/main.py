@@ -554,8 +554,9 @@ class AuditEngineV2:
                 self._render_file_table(reporting_issues)  # Show actual issues!
             else:
                 self._execute_zero_downtime_fixes()
+    
     def audit(self) -> List[AuditIssue]:
-        """Full pipeline: Synapse → Shield → Healer with Smooth UX."""
+        """Full pipeline: YAML Syntax → Synapse → Shield → Healer with Smooth UX."""
         syn = Synapse()
         shield = Shield()
         issues = []
@@ -564,8 +565,7 @@ class AuditEngineV2:
         files = self._find_yaml_files()
         if not files:
             return []
-    
-        # 🆕 SMART PROGRESS: Summary for 20+ files, detailed for <20
+        
         SUMMARY_THRESHOLD = 20
         if len(files) > SUMMARY_THRESHOLD:
             console.print(f"[bold cyan]🔍 Analyzing {len(files)} manifests (summary mode)...[/]")
@@ -574,7 +574,6 @@ class AuditEngineV2:
             console.print(f"[bold cyan]🔍 Analyzing {len(files)} manifests...[/]")
             show_progress = True
         
-        # 🆕 GLOBAL DEVNULL FOR HEALER SILENCING
         devnull = open(os.devnull, 'w')
         problematic_files = []
         
@@ -585,7 +584,33 @@ class AuditEngineV2:
             fname_full = str(abs_fpath)
             has_issues = False
             
-            # 1️⃣ STATUS CHECK (Silent + Color Accurate)
+            # 🔥 1️⃣ YAML SYNTAX CHECK (NEW - CRITICAL!)
+            content = fpath.read_text()
+            try:
+                yaml.safe_load(content)
+            except yaml.YAMLError as yaml_err:
+                # 🎉 SYNTAX ERROR DETECTED!
+                line_num = getattr(yaml_err.problem_mark, 'line', 1) + 1
+                status_color = "red"
+                has_issues = True
+                
+                ident = f"{fname_full}:{line_num}:SYNTAX_ERROR"
+                if ident not in seen:
+                    issues.append(AuditIssue(
+                        code="SYNTAX_ERROR",
+                        severity="CRITICAL",
+                        file=fname_full,
+                        message=f"YAML Syntax error at line {line_num}: {yaml_err.problem}",
+                        line=line_num
+                    ))
+                    seen.add(ident)
+                problematic_files.append(fname)
+                
+                if show_progress:
+                    console.print(f"  [{i:2d}/{len(files)}] [dim]{fname:<35}[/] [bold red]✗[/bold red]")
+                continue  # Skip further analysis for syntax-broken files
+            
+            # 2️⃣ STATUS CHECK (only valid YAML files)
             try:
                 with contextlib.redirect_stderr(devnull):
                     syn.scan_file(str(fpath))
@@ -593,15 +618,12 @@ class AuditEngineV2:
                     shield_issues = sum(1 for doc in docs for _ in shield.scan(doc, syn.all_docs))
                     
                     if not os.getenv('PYTEST_CURRENT_TEST'):
-                        _, codes = self._silent_healer(str(abs_fpath))  # ✅ SILENT
+                        _, codes = self._silent_healer(str(abs_fpath))
                         healer_issues = len([c for c in codes if not c.startswith('OOM_FIXED')])
                         has_syntax_error = any("SYNTAX_ERROR" in str(c) for c in codes)
                     
                     total_issues = shield_issues + healer_issues
-                    if has_syntax_error:
-                        status_color = "red"
-                        has_issues = True
-                    elif total_issues > 0:
+                    if total_issues > 0:
                         status_color = "yellow"
                         has_issues = True
                     else:
@@ -610,17 +632,15 @@ class AuditEngineV2:
                 status_color = "red"
                 has_issues = True
             
-            # 🆕 PROGRESS SUMMARY (Hundreds of files)
             if show_progress:
                 console.print(f"  [{i:2d}/{len(files)}] [dim]{fname:<35}[/] [bold {status_color}]✓[/]")
             elif has_issues and len(problematic_files) < 10:
                 console.print(f"  ⚠️  [dim]{fname:<35}[/] [bold {status_color}]✗[/]")
                 problematic_files.append(fname)
             
-            # 2️⃣ COLLECT ISSUES (Silent healer) - FIXED LOGIC
+            # 3️⃣ COLLECT ISSUES (Silent healer) - VALID YAML ONLY
             try:
                 with contextlib.redirect_stderr(devnull):
-                    # Shield rules
                     docs = [d for d in syn.all_docs if d.get('_origin_file') == str(fpath)]
                     for doc in docs:
                         for finding in shield.scan(doc, syn.all_docs):
@@ -636,7 +656,6 @@ class AuditEngineV2:
                                 ))
                                 seen.add(ident)
                     
-                    # Healer codes - CORRECTED PROCESSING
                     if not os.getenv('PYTEST_CURRENT_TEST'):
                         _, codes = self._silent_healer(str(abs_fpath))
                         
@@ -663,7 +682,8 @@ class AuditEngineV2:
                                 
                             if ident not in seen:
                                 issues.append(AuditIssue(
-                                    code=ccode, severity=severity, file=fname_full, message=msg, line=line
+                                    code=ccode, severity=severity, file=fname_full, 
+                                    message=msg, line=line
                                 ))
                                 seen.add(ident)
             except Exception as e:
@@ -671,7 +691,6 @@ class AuditEngineV2:
         
         devnull.close()
         
-        # 🆕 SUMMARY FOR HUNDREDS OF FILES
         if len(files) > SUMMARY_THRESHOLD:
             console.print(f"\n[bold cyan]📊 SUMMARY:[/]")
             console.print(f"  🟢 Clean: {len(files) - len(problematic_files)} files")
@@ -681,9 +700,8 @@ class AuditEngineV2:
                 if len(problematic_files) > 10:
                     console.print(f"  ... and {len(problematic_files)-10} more")
         
-        console.print()  # Clean spacing before results
+        console.print()
         
-        # 3️⃣ CROSS-RESOURCE AUDIT (final pass)
         for issue in syn.audit():
             if issue.code in PRO_RULES and not is_pro_user():
                 continue
