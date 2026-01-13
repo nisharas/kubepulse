@@ -21,7 +21,7 @@ jobs:
           pip install -r requirements.txt
           # Force specific rich version if needed, then install package
           pip install --upgrade rich==14.2.0
-          pip install -e . 
+          pip install -e .[dev]
           pip install pytest
 
       - name: Environment Truth-Check
