@@ -180,6 +180,10 @@ class Healer:
             current_line_offset = 1
             for doc_str in raw_docs:
                 if not doc_str.strip():
+                    # If it's empty but not the end of the file, it's a double separator
+                    if len(doc_str) == 0: 
+                        self.detected_codes.add(f"SYNTAX_EMPTY_DOCUMENT:{current_line_offset}")
+                    
                     current_line_offset += len(doc_str.splitlines()) + 1
                     continue
 
@@ -188,6 +192,10 @@ class Healer:
                 lines_in_doc = len(doc_str.splitlines())
                 for code in shield_codes:
                     self.detected_codes.add(f"{code}:{current_line_offset}")
+                if not d.strip():
+                    # Update offset and skip processing
+                    current_line_offset += len(doc_str.splitlines()) + 1
+                    continue
                 
                 # Tab conversion and simple key-value spacing
                 d = d.replace('\t', '    ')
@@ -252,6 +260,8 @@ class Healer:
 
                 current_line_offset += lines_in_doc + 1
 
+            # Filter out any empty documents (ghost documents) before joining
+            healed_parts = [p for p in healed_parts if p.strip()]
             healed_final = ("---\n" if original_content.startswith("---") else "") + "\n---\n".join(healed_parts) + "\n"
             
             if return_content: return (healed_final, self.detected_codes)
