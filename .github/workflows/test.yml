@@ -17,17 +17,16 @@ jobs:
       - name: Install Project & Testing Tools
         run: |
           python -m pip install --upgrade pip
-          # Clear the "ghosts" of previous builds
+          # 1. Clean up everything first
           rm -rf build/ dist/ *.egg-info src/*.egg-info .pytest_cache
           
-          # Install dependencies first
-          pip install --no-cache-dir PyYAML pytest argcomplete ruamel.yaml
+          # 2. FORCE REINSTALL EVERYTHING, IGNORE WHAT THE RUNNER ALREADY HAS
+          # This is the "Nuclear" pip command to fix corrupted site-packages
+          pip install --no-cache-dir --upgrade --force-reinstall --ignore-installed \
+            PyYAML pytest ruamel.yaml argcomplete rich==14.2.0
           
-          # Install the project without touching dependencies
+          # 3. Link your project source
           pip install --no-cache-dir --no-deps -e .
-          
-          # Force the specific Rich version last
-          pip install --no-cache-dir --force-reinstall rich==14.2.0
 
       - name: DEBUG - Verify Installation  # ← NEW: See what's WRONG
         run: |
