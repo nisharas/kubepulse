@@ -113,14 +113,26 @@ class Shield:
     def check_limits(self, doc):
         """Detects missing resource limits to prevent OOMKills."""
         findings = []
-        if doc.get('kind') in ['Deployment', 'StatefulSet', 'DaemonSet', 'Job']:
+        kind = doc.get('kind')
+        workloads = ['Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob']
+        
+        if kind in workloads:
             spec = doc.get('spec', {}) or {}
-            t_spec = spec.get('template', {}).get('spec', {}) or {}
             
+            # Consistent Navigation Logic
+            if kind == 'CronJob':
+                t_spec = spec.get('jobTemplate', {}).get('spec', {}).get('template', {}).get('spec', {})
+            elif kind == 'Pod':
+                t_spec = spec
+            else:
+                t_spec = spec.get('template', {}).get('spec', {})
+            
+            if not isinstance(t_spec, dict):
+                return findings
+
             for c in t_spec.get('containers', []):
                 res = c.get('resources', {}) or {}
                 if 'limits' not in res:
-                    # Now using the helper + constants
                     findings.append(self.add_finding(
                         "OOM_RISK", 
                         self.CRITICAL, 
@@ -208,12 +220,25 @@ class Shield:
             ))
         
         # 2. Workload Security Checks (Pod, Deployment, etc.)
-        if kind in ['Deployment', 'Pod', 'StatefulSet', 'DaemonSet']:
+        workloads = ['Deployment', 'Pod', 'StatefulSet', 'DaemonSet', 'CronJob', 'Job']
+        if kind in workloads:
             spec = doc.get('spec') or {}
-            template = spec.get('template') or {} if kind != 'Pod' else doc
-            t_spec = template.get('spec') or {}
+            
+            # Navigate to the actual Pod Spec (t_spec)
+            if kind == 'CronJob':
+                # Path: spec -> jobTemplate -> spec -> template -> spec
+                t_spec = spec.get('jobTemplate', {}).get('spec', {}).get('template', {}).get('spec', {})
+            elif kind == 'Pod':
+                t_spec = spec
+            else:
+                # Path: spec -> template -> spec (Deployments, STS, DS, Jobs)
+                t_spec = spec.get('template', {}).get('spec', {})
+
+            if not isinstance(t_spec, dict):
+                return findings
             
             # Check A: ServiceAccount Token Auto-mounting
+            # Note: We now check t_spec directly
             if t_spec.get('automountServiceAccountToken') is not False:
                 findings.append(self.add_finding(
                     "SEC_TOKEN_AUDIT",
@@ -224,7 +249,7 @@ class Shield:
             
             # Check B: Privileged Containers
             for c in t_spec.get('containers', []):
-                if c.get('securityContext', {}).get('privileged'):
+                if isinstance(c, dict) and c.get('securityContext', {}).get('privileged'):
                     findings.append(self.add_finding(
                         "SEC_PRIVILEGED",
                         self.HIGH,
