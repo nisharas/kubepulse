@@ -462,12 +462,21 @@ class KubecuroCLI:
 # ═══════════════════════════════════════════════
 class AuditEngineV2:
     """Production-grade analysis + healing engine."""
-    
+
     def _silent_healer(self, fpath: str) -> tuple[str|None, list]:
+        """FIX: Route to production healer.py"""
         try:
             from src.kubecuro.healer import linter_engine
-            return linter_engine(fpath, return_content=True, dry_run=True)
-        except:
+            # EXACT healer.py signature:
+            content, codes = linter_engine(
+                file_path=fpath,
+                apply_api_fixes=True,
+                apply_defaults=False,
+                dry_run=False,
+                return_content=True
+            )
+            return content, list(codes)
+        except Exception:
             return None, []
     
     def __init__(self, target: Path, dry_run: bool, yes: bool, show_all: bool, baseline: set, apply_defaults: bool = False):
