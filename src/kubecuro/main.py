@@ -464,31 +464,23 @@ class AuditEngineV2:
     """Production-grade analysis + healing engine."""
 
     def _silent_healer(self, fpath: str) -> tuple[Optional[str], list]:
-        """Unified Healer Route: Handles logic fixes and Regex recovery."""
+        """Unified Healer Route: Relies on Healer's internal two-pass logic."""
         from kubecuro.healer import linter_engine
-        from kubecuro.shield import RegexShield # Import your new elastic shield
         
         try:
-            # Attempt standard YAML-based healing
+            # linter_engine now internally calls RegexShield.sanitize()
+            # and then proceeds to deep YAML healing if possible.
             content, codes = linter_engine(
                 file_path=fpath,
                 apply_api_fixes=True,
                 apply_defaults=self.apply_defaults,
-                dry_run=False,
+                dry_run=True, # We set dry_run=True here because main.py handles the writing
                 return_content=True
             )
             return content, list(codes)
-        except Exception:
-            # FALLBACK: YAML is unparseable. Use the Elastic RegexShield.
-            try:
-                raw_text = Path(fpath).read_text()
-                # Use the robust elastic logic we just wrote!
-                repaired, codes = RegexShield.sanitize(raw_text)
-                
-                if repaired != raw_text:
-                    return repaired, codes # Returns ["SYNTAX_REPAIRED"]
-            except Exception:
-                pass
+        except Exception as e:
+            # This only triggers if the file is unreadable or logic crashes
+            logger.error(f"Failed to process {fpath}: {e}")
             return None, []
     
     def __init__(self, target: Path, dry_run: bool, yes: bool, show_all: bool, baseline: set, apply_defaults: bool = False):
@@ -930,22 +922,16 @@ class AuditEngineV2:
         SUMMARY_THRESHOLD = 20
         show_progress = len(files) <= SUMMARY_THRESHOLD
         
-        if show_progress:
-            console.print(f"[bold cyan]❤️  Healing {len(files)} files...[/]")
-        else:
-            console.print(f"[bold cyan]❤️  Healing {len(files)} files (summary mode)...[/]")
+        console.print(f"[bold cyan]❤️  Healing {len(files)} files...[/]")
 
         fixed_count = 0
         problematic_files = []
         
         for i, fpath in enumerate(files, 1):
             original = self._safe_read(fpath)
-            
-            # Unified Healer handles both standard logic and regex emergency repair
             fixed_content, codes = self._silent_healer(str(fpath))
 
-            # Check if we actually changed anything
-            # We ensure fixed_content is a valid string and different from original
+            # Check if we actually improved the file
             has_changed = (
                 isinstance(fixed_content, str) and 
                 fixed_content.strip() and 
@@ -957,38 +943,64 @@ class AuditEngineV2:
                     fixed_count += 1
                     problematic_files.append(fpath.name)
                     
-                    # Log specific improvements (OOM, Syntax, etc.)
+                    # Log improvements based on our new code categories
                     for code in codes:
                         code_str = str(code).upper()
-                        if "OOM_FIXED" in code_str or "SYNTAX_REPAIRED" in code_str:
+                        # Map codes to user-friendly messages
+                        msg = None
+                        if "OOM_FIXED" in code_str: msg = "Applied resource limits"
+                        elif "SYNTAX" in code_str: msg = "Fixed indentation/tabs"
+                        elif "SEC_PRIVILEGED" in code_str: msg = "Hardened security context"
+                        elif "SVC_SELECTOR_FIXED" in code_str: msg = "Repaired Service selector"
+                        elif "API" in code_str or "FIX_SELECTOR" in code_str: msg = "Migrated deprecated API"
+
+                        if msg:
                             try:
                                 parts = code_str.split(":")
-                                line_info = f"Line {parts[1]}" if len(parts) > 1 else "Global"
-                                msg = "Applied resource limits" if "OOM" in code_str else "Repaired YAML structure"
+                                line_info = f"Line {parts[1]}" if (len(parts) > 1 and parts[1].strip()) else "Global"
                                 console.print(f"    [bold blue]💡 {line_info}:[/] [dim]{msg} in {fpath.name}.[/]")
-                            except Exception: 
-                                pass
+                            except: pass
 
             if show_progress:
-                # yellow check = modified/fixed, green check = already healthy
                 file_status = "yellow" if has_changed else "green"
                 console.print(f"  [{i:2d}/{len(files)}] [dim]{fpath.name:<35}[/] [bold {file_status}]✓[/]")
         
-        # Final Summary Panel
         self._render_fix_summary(fixed_count, len(files), problematic_files)
-      
+
     def _render_fix_summary(self, fixed, total, names):
-        """Clean summary output for the fix command."""
+        """Final summary for the KubeCuro CLI."""
+        from rich.panel import Panel
+        from rich.text import Text
+
         if fixed == 0:
-            console.print(f"\n[bold green]✅ Scan complete: All {total} files are healthy (no changes needed).[/]")
-        else:
-            console.print(f"\n[bold green]✨ {fixed}/{total} files successfully healed![/]")
-            if names:
-                subset = names[:5]
-                name_str = ", ".join(subset)
-                if len(names) > 5:
-                    name_str += f" ...and {len(names)-5} more"
-                console.print(f"[dim]Modified: {name_str}[/]")
+            console.print(f"\n[bold green]✅ KubeCuro Audit:[/] All {total} files are currently healthy. No treatment required.")
+            return
+
+        # Build the treatment report
+        summary_text = Text()
+        summary_text.append("\n⚕️  KubeCuro Treatment Complete\n", style="bold green")
+        summary_text.append(f"Healed {fixed} of {total} manifests with zero downtime.\n", style="white")
+        
+        if names:
+            subset = names[:5]
+            name_str = ", ".join(subset)
+            if len(names) > 5:
+                name_str += f" (+{len(names)-5} others)"
+            summary_text.append(f"\n[bold blue]Patched manifests:[/]\n[dim]{name_str}[/]\n", style="dim")
+
+        # KubeCuro-specific next step
+        summary_text.append("\n[bold yellow]👉 Recommendation:[/] Review the changes and run ", style="white")
+        summary_text.append("`kubecuro scan` ", style="bold cyan")
+        summary_text.append("to verify the new security posture.", style="white")
+
+        console.print(
+            Panel(
+                summary_text,
+                title="[bold white] TREATMENT SUMMARY [/]",
+                border_style="green",
+                expand=False
+            )
+        )
   
     def _safe_read(self, fpath: Path) -> str:
         """Safe file read."""
@@ -1000,36 +1012,45 @@ class AuditEngineV2:
 
     def _atomic_fix(self, fpath: Path, original: str, fixed: str) -> bool:
         """
-        Zero-downtime atomic file replacement with hardware-level durability.
+        Zero-downtime atomic swap: Write-to-temp, Sync, then Rename.
+        Ensures fpath always exists and is never partially written.
         """
         if self.dry_run:
             self.console.print(f"[cyan]DRY-RUN: Would fix [bold]{fpath.name}[/]")
             return True
         
+        # Create a hidden temp file in the same directory (crucial for atomic rename)
+        tmp_file = fpath.with_name(f".{fpath.name}.tmp")
         backup = fpath.with_suffix(CONFIG.BACKUP_SUFFIX)
         
         try:
-            # 1. Rotate the existing file to a backup
-            # This clears the way for the new file while preserving the original
-            fpath.rename(backup)
-            
-            # 2. Write new content to the target path
-            with open(fpath, 'w', encoding='utf-8') as f:
+            # 1. Write content to the hidden temporary file
+            with open(tmp_file, 'w', encoding='utf-8') as f:
                 f.write(fixed)
-                
-                # RECOMMENDATION: Ensure data is physically on the disk
-                f.flush()            # Clear Python internal buffers
-                os.fsync(f.fileno()) # Force the OS to write to physical storage
+                f.flush()
+                os.fsync(f.fileno()) # Force physical disk write
 
-            print(f"✅ FIXED: {fpath.name}")
+            # 2. Backup the original (Copy instead of move to keep fpath alive)
+            # Use shutil.copy2 to preserve metadata (permissions, timestamps)
+            import shutil
+            shutil.copy2(fpath, backup)
+
+            # 3. ATOMIC SWAP: Rename temp to target
+            # On POSIX, this is a single atomic syscall. fpath always exists.
+            tmp_file.replace(fpath)
+
             return True
             
         except Exception as e:
-            # 3. Fail-safe: If anything went wrong during the write, restore backup
+            # 4. Cleanup on failure
+            if tmp_file.exists():
+                tmp_file.unlink()
+            
+            # If the swap failed but we have a backup, ensure target is restored
             if backup.exists() and not fpath.exists():
-                backup.rename(fpath)
+                backup.replace(fpath)
 
-            print(f"⚠️ Failed to fix {fpath.name}: {e}")
+            self.console.print(f"⚠️ Failed to fix {fpath.name}: {e}")
             return False
 
 # ═══════════════════════════════════════════════════════════════
