@@ -462,20 +462,12 @@ class KubecuroCLI:
 # ═══════════════════════════════════════════════
 class AuditEngineV2:
     """Production-grade analysis + healing engine."""
+    
     def _silent_healer(self, fpath: str) -> tuple[str|None, list]:
-        """✅ USE YOUR EXISTING healer.py - Perfect architecture!"""
         try:
             from src.kubecuro.healer import linter_engine
-            # YOUR healer.py signature EXACTLY:
-            content, codes = linter_engine(
-                file_path=fpath, 
-                apply_api_fixes=True,
-                apply_defaults=self.apply_defaults,
-                dry_run=self.dry_run,
-                return_content=True  # ✅ Returns (content, codes)
-            )
-            return content, codes
-        except Exception:
+            return linter_engine(fpath, return_content=True, dry_run=True)
+        except:
             return None, []
     
     def __init__(self, target: Path, dry_run: bool, yes: bool, show_all: bool, baseline: set, apply_defaults: bool = False):
@@ -572,25 +564,20 @@ class AuditEngineV2:
                 line_num = getattr(getattr(yaml_err, 'problem_mark', None), 'line', 1) + 1
                 status_color = "yellow"
                 
-                #healed_content, fix_codes = self._syntax_healer(str(fpath))
-                #fpath.write_text(healed_content)
-                self.detected_issues.append({
-                    'severity': 'HIGH',
-                    'line': line_num,
-                    'code': 'SYNTAX_ERROR',
-                    'message': f"YAML syntax error: {str(yaml_err)[:100]}"
-                })                
-                # ADD TO MAIN ISSUES TABLE
+                # 1. REPORT SYNTAX ERROR TO MAIN ISSUES (NO detected_issues!)
                 ident = f"{fname_full}:SYNTAX_ERROR"
                 if ident not in seen:
                     issues.append(AuditIssue(
-                        code="SYNTAX_ERROR", severity="HIGH",
-                        file=fname_full, message=f"YAML syntax error at line {line_num}", line=line_num
+                        code="SYNTAX_ERROR", 
+                        severity="HIGH",
+                        file=fname_full, 
+                        message=f"YAML syntax error at line {line_num}: {str(yaml_err)[:80]}", 
+                        line=line_num
                     ))
                     seen.add(ident)
                 
                 console.print(f"  [{i:2d}/{len(files)}] [dim]{fname:<35}[/] [bold yellow]⚠️[/]")
-                continue  # Skip to next file - NO healer during scan
+                continue 
             
             # 2️⃣ STATUS CHECK (only valid YAML files)
             try:
