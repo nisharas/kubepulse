@@ -17,18 +17,17 @@ jobs:
       - name: Install Project & Testing Tools
         run: |
           python -m pip install --upgrade pip
-          # 1. Purge metadata to keep the path clean
+          # Clear the "ghosts" of previous builds
           rm -rf build/ dist/ *.egg-info src/*.egg-info .pytest_cache
           
-          # 2. Install EVERYTHING from your requirements file
-          # This will get argcomplete, ruamel.yaml, PyYAML, and rich
-          pip install --no-cache-dir -r requirements.txt
+          # Install dependencies first
+          pip install --no-cache-dir PyYAML pytest argcomplete ruamel.yaml
           
-          # 3. Double-check Rich and Pytest are exactly what we want
-          pip install --no-cache-dir --force-reinstall rich==14.2.0 pytest
-          
-          # 4. Link the project source without messing with dependencies
+          # Install the project without touching dependencies
           pip install --no-cache-dir --no-deps -e .
+          
+          # Force the specific Rich version last
+          pip install --no-cache-dir --force-reinstall rich==14.2.0
 
       - name: DEBUG - Verify Installation  # ← NEW: See what's WRONG
         run: |
@@ -38,7 +37,8 @@ jobs:
           echo "=== INSTALLED PACKAGES ==="
           pip list | grep -E "(yaml|rich|kubecuro)"
           echo "=== TEST IMPORTS ==="
-          python -c "from rich.console import Console; print('✅ Rich Console OK')"
+          python -c "import rich; print('Rich location:', rich.__file__)"
+          python -c "from rich.console import Console; print('✅ Console found in:', Console.__module__)" || echo "❌ Console MISSING"
           python -c "import yaml; print('✅ PyYAML OK')"
           python -c "import kubecuro; print('✅ KUBECURO OK')" || echo "❌ KUBECURO FAILED"
           echo "=== TEST KUBECURO MAIN ==="
