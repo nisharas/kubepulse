@@ -475,22 +475,18 @@ class AuditEngineV2:
 
     def _silent_healer(self, fpath: str) -> tuple[Optional[str], list]:
         """Unified Healer Route: Relies on Healer's internal two-pass logic."""
-        from kubecuro.healer import linter_engine
-        
         try:
-            # linter_engine now internally calls RegexShield.sanitize()
-            # and then proceeds to deep YAML healing if possible.
+            # We pass self.dry_run so the healer knows whether to log 'FIXED' or 'ISSUE'
             content, codes = linter_engine(
                 file_path=fpath,
                 apply_api_fixes=True,
                 apply_defaults=self.apply_defaults,
-                dry_run=True, # We set dry_run=True here because main.py handles the writing
+                dry_run=self.dry_run, 
                 return_content=True
             )
             return content, list(codes)
         except Exception as e:
-            # This only triggers if the file is unreadable or logic crashes
-            logger.error(f"Failed to process {fpath}: {e}")
+            logging.error(f"Failed to process {fpath}: {e}")
             return None, []
     
     def __init__(self, target: Path, dry_run: bool, yes: bool, show_all: bool, baseline: set, apply_defaults: bool = False):
@@ -543,10 +539,9 @@ class AuditEngineV2:
             if not issues:
                 console.print(Align.center("[bold green]✅ Nothing to fix - All files healthy![/bold green]"))
                 return
-            console.print(f"[bold cyan]🚀 {'DRY-RUN' if self.dry_run else 'LIVE FIX MODE'}[/]")
             # NEW: Show what would be fixed (DRY-RUN) or fix it (LIVE)
             if self.dry_run:
-                console.print("\n[bold yellow]📋 Issues that WOULD be analyzed:[/]")
+                console.print(f"[bold cyan]🚀 DRY-RUN MODE (No changes will be saved)[/]")
                 self._render_file_table(reporting_issues)  # Show actual issues!
             else:
                 self._execute_zero_downtime_fixes()
@@ -1029,6 +1024,13 @@ class AuditEngineV2:
                 padding=(1, 2)
             )
         )
+        if all_detected_codes:
+              content.append("[warning]Repairs Performed:[/warning]")
+              # This cleans 'OOM_FIXED:24' into 'Oom Fixed'
+              unique_codes = sorted(list(set(c.split(':')[0] for c in all_detected_codes if c)))
+              for code in unique_codes:
+                  friendly_name = code.replace('_', ' ').title()
+                  content.append(f" [success]✓[/success] {friendly_name}")
   
     def _safe_read(self, fpath: Path) -> str:
         """Safe file read."""
