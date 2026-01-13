@@ -213,40 +213,54 @@ class Healer:
                 # 2. ENHANCED PRE-PARSER (Indentation, Metadata, Colons)
                 lines = d.splitlines()
                 repaired_lines = []
+                last_valid_indent = 0 # Track parent depth
+                
                 for idx, line in enumerate(lines):
                     clean_line = line.rstrip()
-                    
-                    # A. Indentation Snap (Fixes line 9 command style issues)
-                    if clean_line.startswith(" " * 6) and not clean_line.strip().startswith("-"):
-                        clean_line = "    " + clean_line.lstrip()
-                        self.detected_codes.add(f"FIX_INDENTATION_SNAPPED:{current_line_offset + idx}")
-
-                    # B. Metadata Alignment (Fixes name: healer-test)
-                    if "name:" in clean_line and clean_line.startswith("   "):
-                        clean_line = "  " + clean_line.lstrip()
-                        self.detected_codes.add(f"FIX_METADATA_ALIGNMENT:{current_line_offset + idx}")
-
-                    # C. Smart Colon Injection (Fixes image "nginx" without double-injecting)
+                    if not clean_line.strip():
+                        repaired_lines.append("")
+                        continue
+                
+                    stripped = clean_line.lstrip()
+                    indent = len(clean_line) - len(stripped)
+                    is_parent = stripped.endswith(':')
+                
+                    # A. RELATIVE INDENTATION SNAP
+                    if indent > 0:
+                        # If the jump is more than 2 or is an odd number of spaces
+                        if (indent - last_valid_indent) > 2 or (indent % 2 != 0):
+                            new_indent = last_valid_indent + 2
+                            clean_line = (" " * new_indent) + stripped
+                            indent = new_indent
+                            self.detected_codes.add(f"FIX_INDENTATION_SNAPPED:{current_line_offset + idx}")
+                
+                    # B. Metadata Alignment (Special case for 'name' in metadata)
+                    if "name:" in clean_line and clean_line.startswith("    "):
+                         # Keep this as a safety fallback for common K8s metadata bloat
+                         is_in_metadata = any("metadata:" in line for line in repaired_lines[-5:])
+                         if "name:" in clean_line and clean_line.startswith("    ") and is_in_metadata:
+                            clean_line = "  " + clean_line.lstrip()
+                            indent = 2
+                
+                    # C. Smart Colon Injection
                     k8s_keys = r"(image|name|containerPort|hostPort|protocol|imagePullPolicy|kind|apiVersion|labels)"
                     if re.search(rf'^[ \t]*{k8s_keys}[ \t]+[\'"\[\w]', clean_line) and ":" not in clean_line:
                         clean_line = re.sub(rf'^([ \t]*)({k8s_keys})([ \t]+)', r'\1\2: \3', clean_line)
                         self.detected_codes.add(f"FIX_COLON_INJECTED:{current_line_offset + idx}")
-                    
-                    # D. Guard against "image: image" double-up
+                        
+                    # D. Double-colon guard
                     if "image: image" in clean_line:
                         clean_line = clean_line.replace("image: image", "image: ")
-
+                
+                    # Update tracker for next line
+                    if is_parent:
+                        last_valid_indent = indent
+                    elif stripped.startswith("- "):
+                        last_valid_indent = indent + 2 
+                
                     repaired_lines.append(clean_line)
                 
                 d = "\n".join(repaired_lines)
-                
-                # Tab conversion & Key-Value whitespace
-                d = d.replace('\t', '    ')
-                d = re.sub(r'^(?![ \t]*#)([ \t]*[\w.-]+):(?!\s|$)', r'\1: ', d, flags=re.MULTILINE)
-
-                if not d.strip():
-                    current_line_offset += lines_in_doc + 1
-                    continue
 
                 # 3. PARSING & STRUCTURAL HEALING
                 try:
@@ -316,6 +330,11 @@ class Healer:
             changed = original_content.strip() != healed_final.strip()
             if changed and not dry_run:
                 with open(file_path, 'w') as f: f.write(healed_final)
+            # NEW: If we are in dry_run, but the file is ALREADY clean, 
+            # don't report the "FIX_" codes because they aren't actually needed!
+            if dry_run and not changed:
+                # Remove all FIX codes because the file on disk matches our healed version
+                self.detected_codes = {c for c in self.detected_codes if "FIX_" not in c}
                 
             return (changed, self.detected_codes)
 
