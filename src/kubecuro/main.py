@@ -473,11 +473,23 @@ class AuditEngineV2:
         
         original_content = Path(file_path).read_text()
         
-        # YOUR GENIUS REGEX FIXES:
+        # 1. Fix missing colons at end of lines
         healed = re.sub(r'(^[ \t]*[\w.-]+)(?=[ \t]*$)', r'\1:', original_content, flags=re.MULTILINE)
-        healed = re.sub(r'(image:[ \t]*)([^"\s\n][^#\n]*:[^#\n]*)', r'\1"\2"', healed)
-        healed = re.sub(r'(^[ \t]*[\w.-]+):(?!\s| )', r'\1: ', healed, flags=re.MULTILINE)
+        
+        # 2. Fix image: nginx → image: "nginx" (YOUR EXACT ERROR!)
+        healed = re.sub(r'(image[ \t]*)([^"\s\n][^#\n]*?)(?=[ \t]*#|$)', r'\1"\2":', healed, flags=re.MULTILINE)
+        
+        # 3. Fix colon without space: key:val → key: val
+        healed = re.sub(r'([a-zA-Z0-9_-]+)(:)([a-zA-Z0-9_-][^"\s\n]*)', r'\1\2 \3', healed, flags=re.MULTILINE)
+        
+        # 4. Fix container indent (6 spaces → 4 spaces)
+        healed = re.sub(r'^([ \t]*containers:.*?)\n([ \t]{6,})([^\n]*)', r'\1\n\2  \3', healed, flags=re.MULTILINE)
+        
+        # 5. Tabs → 2 spaces
         healed = healed.replace('\t', '  ')
+        
+        # 6. Fix double newlines
+        healed = re.sub(r'\n([ \t]*)\n+', r'\n\1\n', healed)
         
         # ruamel.yaml normalization (preserves comments!)
         try:
