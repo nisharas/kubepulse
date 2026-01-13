@@ -17,12 +17,13 @@ jobs:
       - name: Install Project & Testing Tools
         run: |
           python -m pip install --upgrade pip
+          # 1. Install core dependencies first
           pip install -r requirements.txt
-          # Ensure PyYAML is present for 'import yaml'
-          pip install PyYAML
-          pip install --upgrade rich==14.2.0
+          pip install PyYAML pytest          
+          # 2. Install your project in editable mode
           pip install -e .
-          pip install pytest
+          # 3. Force REINSTALL rich LAST to ensure the correct version wins
+          pip install --force-reinstall rich==14.2.0
 
       - name: DEBUG - Verify Installation  # ← NEW: See what's WRONG
         run: |
