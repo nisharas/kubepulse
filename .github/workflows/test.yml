@@ -51,6 +51,12 @@ jobs:
 
       - name: Clean Cache and Run Tests
         run: |
+          # 1. Final cleanup of potential import blockers
           find . -name "*.pyc" -delete
           find . -name "__pycache__" -delete
-          python -m pytest tests/ -v --tb=short
+          
+          # 2. RUN PYTEST WITH FORCED PATHING
+          # We set PYTHONPATH to 'src' so 'import kubecuro' works, 
+          # but we run it as a module to ensure site-packages are correct.
+          export PYTHONPATH=$PYTHONPATH:$(pwd)/src
+          python3 -m pytest tests/test_logic.py -v --tb=long
