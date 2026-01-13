@@ -12,6 +12,7 @@ from kubecuro.shield import Shield
 from kubecuro.models import AuditIssue
 
 import sys, os, logging, argparse, platform, time, json, re, difflib, argcomplete, random, contextlib, subprocess, yaml
+import ruamel.yaml
 import rich.box as box
 from pathlib import Path
 from typing import List, Optional, Dict, Any
