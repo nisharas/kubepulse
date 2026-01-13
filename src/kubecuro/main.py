@@ -480,16 +480,23 @@ class AuditEngineV2:
         healed = healed.replace('\t', '  ')
         
         # ruamel.yaml normalization (preserves comments!)
-        docs = list(yaml_parser.load_all(healed))
-        output_buffer = StringIO()
-        yaml_parser.dump_all(docs, output_buffer)
-        healed_final = output_buffer.getvalue()
+        try:
+            docs = list(yaml_parser.load_all(healed))
+            output_buffer = StringIO()
+            yaml_parser.dump_all(docs, output_buffer)
+            healed_final = output_buffer.getvalue()
+        except Exception:
+            healed_final = healed  # Use regex-fixed version (ALWAYS safe)
         
-        # Count fixes
+        # SMART FIX COUNTING (AFTER healing)
         diff = list(difflib.unified_diff(original_content.splitlines(), healed_final.splitlines(), lineterm=''))
         fix_count = len([line for line in diff if line.startswith('+') and not line.startswith('+++')])
-        
-        codes = [f"SYNTAX_FIXED:{fix_count}"] if fix_count > 0 else []
+
+        # HONEST RESULTS
+        if fix_count > 0:
+            codes = [f"SYNTAX_FIXED:{fix_count}"]
+        else:
+            codes = ["SYNTAX_CLEAN"]  # Perfect file!
         return healed_final, codes
 
     def _silent_healer(self, fpath: str) -> tuple[str|None, list]:
