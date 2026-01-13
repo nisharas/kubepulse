@@ -1,4 +1,6 @@
 # --- Core Logic & YAML ---
+# PyYAML is REQUIRED for 'import yaml' 
+PyYAML>=6.0.1
 # Required for the 'Healer' engine to preserve comments and formatting
 ruamel.yaml>=0.17.21
 
