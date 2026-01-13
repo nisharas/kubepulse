@@ -3,16 +3,24 @@ import sys
 import os
 import shutil
 import pytest
+import site
 
 # Helper to run KubeCuro commands
 def run_kubecuro(*args):
-    # Get ABSOLUTE path to pytest's Python (with site-packages)
-    pytest_python = shutil.which("python3") or sys.executable
+    # Get the actual python executing this test
+    pytest_python = sys.executable 
     
     env = os.environ.copy()
-    # Project root where pyproject.toml lives
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    env["PYTHONPATH"] = project_root  # /kubecuro/ (pyproject.toml installs here)
+    
+    # FIX: Get the site-packages paths from the current running environment
+    # This ensures 'yaml', 'rich', etc., are found by the subprocess
+    current_site_packages = site.getsitepackages()
+    
+    # Join project root with current environment's packages
+    paths = [project_root, os.path.join(project_root, "src")] + current_site_packages
+    env["PYTHONPATH"] = os.pathsep.join(paths)
+    
     env["FORCE_COLOR"] = "1" 
     env["PYTEST_CURRENT_TEST"] = "true" 
     
@@ -21,7 +29,7 @@ def run_kubecuro(*args):
         capture_output=True,
         text=True,
         env=env,
-        cwd=project_root  # Run from project root!
+        cwd=project_root
     )
 
 
