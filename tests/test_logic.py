@@ -7,13 +7,14 @@ import pytest
 # Helper to run KubeCuro commands
 def run_kubecuro(*args):
     env = os.environ.copy()
-    
-    # CRITICAL: Point to src/ directory where kubecuro package lives
     src_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
-    env["PYTHONPATH"] = src_dir  # ← /kubecuro/src/ NOT /kubecuro/
-    
+    env["PYTHONPATH"] = src_dir
     env["FORCE_COLOR"] = "1" 
     env["PYTEST_CURRENT_TEST"] = "true" 
+    
+    # 🔥 NUCLEAR OPTION: Install deps IN the subprocess itself
+    cmd = [sys.executable, "-m", "pip", "install", "ruamel.yaml", "rich", "argcomplete"]
+    subprocess.run(cmd, env=env, check=True)
     
     return subprocess.run(
         [sys.executable, "-m", "kubecuro.main", *args],
@@ -21,8 +22,6 @@ def run_kubecuro(*args):
         text=True,
         env=env
     )
-
-
 
 def test_ghost_service_logic():
     """Scenario: Service exists but matches no pods."""
