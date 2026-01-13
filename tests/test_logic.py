@@ -1,44 +1,31 @@
-import subprocess
 import sys
 import os
 import shutil
 import pytest
-import site
+from io import StringIO
+from contextlib import redirect_stdout
+from kubecuro.main import main # Import your actual entry point
 
-# Helper to run KubeCuro commands
+# Helper to run KubeCuro commands internally
 def run_kubecuro(*args):
-    # Use the same python executable that is running pytest
-    pytest_python = sys.executable 
+    # Capture stdout
+    f = StringIO()
+    # Mock sys.argv for the main() function
+    sys.argv = ["kubecuro"] + list(args)
     
-    env = os.environ.copy()
-    # Project root where pyproject.toml lives
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        with redirect_stdout(f):
+            main()
+    except SystemExit:
+        # main() likely calls sys.exit(), we catch it to keep pytest running
+        pass
     
-    # 1. Start with the project source directories
-    python_paths = [
-        project_root,
-        os.path.join(project_root, "src")
-    ]
+    # Create a simple mock object that looks like the subprocess result
+    class MockResult:
+        def __init__(self, stdout):
+            self.stdout = stdout
     
-    # 2. CRITICAL: Inject the current process's sys.path
-    # This ensures that 'yaml', 'rich', etc., installed by the CI 
-    # are visible to the subprocess.
-    python_paths.extend(sys.path)
-    
-    # Filter out empty strings and join with the OS-specific separator
-    env["PYTHONPATH"] = os.pathsep.join([p for p in python_paths if p])
-    
-    env["FORCE_COLOR"] = "1" 
-    env["PYTEST_CURRENT_TEST"] = "true" 
-    
-    return subprocess.run(
-        [pytest_python, "-m", "kubecuro.main", *args],
-        capture_output=True,
-        text=True,
-        env=env,
-        cwd=project_root
-    )
-
+    return MockResult(f.getvalue())
 
 def test_ghost_service_logic():
     """Scenario: Service exists but matches no pods."""
