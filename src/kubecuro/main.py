@@ -907,7 +907,11 @@ class AuditEngineV2:
     def _generate_tip(self, issues, high, syntax_errors) -> str:
         """Helper to generate dynamic insight text."""
         if syntax_errors:
-            return f"[bold red]CRITICAL:[/bold red] {len(syntax_errors)} files have invalid YAML syntax. These will fail 'kubectl apply' immediately. Run [bold cyan]kubecuro fix[/] to attempt auto-repair."
+            return (
+                f"[bold red]CRITICAL:[/bold red] {len(syntax_errors)} files have invalid YAML syntax. "
+                f"These are [bold]non-deployable[/] and will be rejected by the Kubernetes API. "
+                f"Run [bold cyan]kubecuro fix[/] to attempt auto-repair."
+            )
         if high:
             return f"Logic risk detected in {len(high)} manifests. Deployment may succeed but result in OOMKills or downtime."
         return "All manifests are syntactically and logically sound. Ready for CI/CD pipeline."
