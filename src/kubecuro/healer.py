@@ -22,6 +22,8 @@ class Healer:
         # Round-trip loader preserves comments and block styles
         self.yaml = YAML(typ='rt')
         self.yaml.indent(mapping=2, sequence=4, offset=2)
+        self.yaml.block_seq_indent = 2
+        self.yaml.width = 4096
         self.yaml.preserve_quotes = True
         
         # --- SHIELD INTEGRATION ---
@@ -175,7 +177,7 @@ class Healer:
                 except Exception: continue
 
             # PASS 2: Healing Loop
-            current_line_offset = 1 if not original_content.startswith("---") else 2
+            current_line_offset = 1
             for doc_str in raw_docs:
                 if not doc_str.strip():
                     current_line_offset += len(doc_str.splitlines()) + 1
@@ -183,6 +185,7 @@ class Healer:
 
                 # --- INTEGRATED REGEX SHIELD ---
                 d, shield_codes = RegexShield.sanitize(doc_str)
+                lines_in_doc = len(doc_str.splitlines())
                 for code in shield_codes:
                     self.detected_codes.add(f"{code}:{current_line_offset}")
                 
@@ -202,8 +205,8 @@ class Healer:
                         # Note: You'll need to prepare 'all_parsed_docs' in PASS 1
                         findings = self.shield.scan(parsed, all_docs=all_parsed_docs)
                         for f in findings:
-                            # Map the Shield dict to your internal string format
-                            self.detected_codes.add(f"{f['code']}:{f['line']}")
+                            abs_line = (current_line_offset + f['line'] - 1) if f['line'] > 0 else current_line_offset
+                            self.detected_codes.add(f"{f['code']}:{abs_line}")
 
                         # API & Selector Fixes
                         if api in self.shield.DEPRECATIONS:
@@ -236,12 +239,18 @@ class Healer:
                     else:
                         healed_parts.append(d.strip())
 
-                except Exception:
-                    # If YAML parsing still fails, we check if RegexShield made progress
-                    self.detected_codes.add(f"SYNTAX_ERROR:{current_line_offset}")
-                    healed_parts.append(d.strip())              
+                except Exception as e:
+                    # 1. Start with the document's beginning as a fallback
+                    error_line = current_line_offset                    
+                    # 2. Safely grab the mark object
+                    mark = getattr(e, 'problem_mark', None)                    
+                    # 3. Only access .line if mark is actually an object
+                    if mark is not None:
+                        error_line = current_line_offset + mark.line
+                    self.detected_codes.add(f"SYNTAX_ERROR:{error_line}")
+                    healed_parts.append(d.strip())             
 
-                current_line_offset += len(doc_str.splitlines()) + 1
+                current_line_offset += lines_in_doc + 1
 
             healed_final = ("---\n" if original_content.startswith("---") else "") + "\n---\n".join(healed_parts) + "\n"
             
