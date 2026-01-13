@@ -572,21 +572,25 @@ class AuditEngineV2:
                 line_num = getattr(getattr(yaml_err, 'problem_mark', None), 'line', 1) + 1
                 status_color = "yellow"
                 
-                healed_content, fix_codes = self._syntax_healer(str(fpath))
-                fpath.write_text(healed_content)
+                #healed_content, fix_codes = self._syntax_healer(str(fpath))
+                #fpath.write_text(healed_content)
+                self.detected_issues.append({
+                    'severity': 'HIGH',
+                    'line': line_num,
+                    'code': 'SYNTAX_ERROR',
+                    'message': f"YAML syntax error: {str(yaml_err)[:100]}"
+                })                
+                # ADD TO MAIN ISSUES TABLE
+                ident = f"{fname_full}:SYNTAX_ERROR"
+                if ident not in seen:
+                    issues.append(AuditIssue(
+                        code="SYNTAX_ERROR", severity="HIGH",
+                        file=fname_full, message=f"YAML syntax error at line {line_num}", line=line_num
+                    ))
+                    seen.add(ident)
                 
-                for code in fix_codes:
-                    #parts = code.split(":")
-                    ident = f"{fname_full}:SYNTAX_FIXED"
-                    if ident not in seen:
-                        issues.append(AuditIssue(
-                            code="SYNTAX_FIXED", severity="MEDIUM",
-                            file=fname_full, message=f"Syntax healed: {code}", line=0
-                        ))
-                        seen.add(ident)
-                
-                console.print(f"  [{i:2d}/{len(files)}] [dim]{fname:<35}[/] [bold yellow]✓[/]")
-                continue  # ✅ CRITICAL: Skip to next file
+                console.print(f"  [{i:2d}/{len(files)}] [dim]{fname:<35}[/] [bold yellow]⚠️[/]")
+                continue  # Skip to next file - NO healer during scan
             
             # 2️⃣ STATUS CHECK (only valid YAML files)
             try:
