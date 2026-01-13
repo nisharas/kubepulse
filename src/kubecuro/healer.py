@@ -11,7 +11,6 @@ import os
 import logging
 from typing import Tuple, Union, Optional, Set
 from io import StringIO
-from pathlib import Path
 from ruamel.yaml import YAML
 from kubecuro.shield import Shield, RegexShield
 
@@ -63,6 +62,31 @@ class Healer:
             return 1
         except Exception:
             return 1
+
+    def validate_schema(self, doc: dict, kind: str) -> bool:
+        """
+        Lightweight Schema Validation: Checks if the mandatory top-level 
+        fields for a given Kind are present.
+        """
+        # Define minimum structural requirements for common K8s objects
+        schema_requirements = {
+            'Pod': ['spec'],
+            'Deployment': ['spec'],
+            'Service': ['spec'],
+            'StatefulSet': ['spec'],
+            'DaemonSet': ['spec'],
+            'ConfigMap': ['data', 'binaryData'],
+            'Secret': ['data', 'stringData'],
+            'Ingress': ['spec'],
+            'Namespace': []
+        }
+        
+        if kind in schema_requirements:
+            # For things like ConfigMaps, we only need one of the data fields
+            fields = schema_requirements[kind]
+            if not fields: return True
+            return any(field in doc for field in fields)
+        return True
 
     def apply_security_patches(self, doc: dict, kind: str, global_line_offset: int = 0, apply_defaults: bool = False) -> None:
         """Standard Security Hardening & Stability Patching."""
@@ -119,7 +143,7 @@ class Healer:
             elif idx > 0: profile = {'cpu': '200m', 'memory': '192Mi'}
             else: profile = {'cpu': '500m', 'memory': '256Mi'}
 
-            # 5. Resources
+            # 5. Resources & OOM Fixes
             res = c.get('resources', {})
             if 'limits' not in res:
                 actual_line = global_line_offset + (self.get_line(c) - 1)
@@ -136,7 +160,7 @@ class Healer:
                 else:
                     self.detected_codes.add(f"OOM_RISK:{actual_line}")
 
-            # 6. Privileged
+            # 6. Privileged Context
             s_ctx = c.get('securityContext', {})
             if isinstance(s_ctx, dict) and s_ctx.get('privileged') is True:
                 actual_line = global_line_offset + (self.get_line(c, 'securityContext') - 1)
@@ -151,12 +175,11 @@ class Healer:
             if not os.path.exists(file_path): return (None if return_content else False, set())
             with open(file_path, 'r') as f: original_content = f.read()
             
-            # Split documents
             raw_docs = re.split(r'^---\s*$', original_content, flags=re.MULTILINE)
             healed_parts = []
             self.detected_codes = set()           
 
-            # PASS 1: Metadata Map
+            # --- PASS 1: METADATA MAP (Multi-Pass Mapping) ---
             all_parsed_docs = []
             label_map = {}
             for doc_str in raw_docs:
@@ -176,31 +199,46 @@ class Healer:
                             if labels: label_map[(kind, name)] = labels
                 except Exception: continue
 
-            # PASS 2: Healing Loop
+            # --- PASS 2: HEALING LOOP ---
             current_line_offset = 1
             for doc_str in raw_docs:
                 if not doc_str.strip():
-                    # If it's empty but not the end of the file, it's a double separator
-                    if len(doc_str) == 0: 
-                        self.detected_codes.add(f"SYNTAX_EMPTY_DOCUMENT:{current_line_offset}")
-                    
                     current_line_offset += len(doc_str.splitlines()) + 1
                     continue
 
-                # --- INTEGRATED REGEX SHIELD ---
+                # 1. INITIAL REGEX SANITIZATION (Regex Shield)
                 d, shield_codes = RegexShield.sanitize(doc_str)
                 lines_in_doc = len(doc_str.splitlines())
                 for code in shield_codes:
                     self.detected_codes.add(f"{code}:{current_line_offset}")
-                if not d.strip():
-                    # Update offset and skip processing
-                    current_line_offset += len(doc_str.splitlines()) + 1
-                    continue
+
+                # 2. PRE-PARSER BLUNT FORCE REPAIR (Indentation & Colons)
+                lines = d.splitlines()
+                repaired_lines = []
+                for idx, line in enumerate(lines):
+                    # A. Indentation Snap (Fixes those huge gaps)
+                    if line.startswith(" " * 12) and not line.strip().startswith("#"):
+                        line = "    " + line.lstrip()
+                        self.detected_codes.add(f"FIX_INDENTATION_SNAPPED:{current_line_offset + idx}")
+                    
+                    # B. Smart Colon Injection (Fixes 'image "nginx"')
+                    k8s_keys = r"(image|name|containerPort|hostPort|protocol|imagePullPolicy|kind|apiVersion|labels)"
+                    if re.search(rf'^[ \t]*{k8s_keys}[ \t]+[\'"\[\w]', line):
+                        line = re.sub(rf'^([ \t]*)({k8s_keys})([ \t]+)', r'\1\2: \3', line)
+                        self.detected_codes.add(f"FIX_COLON_INJECTED:{current_line_offset + idx}")
+                    
+                    repaired_lines.append(line)
+                d = "\n".join(repaired_lines)
                 
-                # Tab conversion and simple key-value spacing
+                # Tab conversion & Key-Value whitespace
                 d = d.replace('\t', '    ')
                 d = re.sub(r'^(?![ \t]*#)([ \t]*[\w.-]+):(?!\s|$)', r'\1: ', d, flags=re.MULTILINE)
 
+                if not d.strip():
+                    current_line_offset += lines_in_doc + 1
+                    continue
+
+                # 3. PARSING & STRUCTURAL HEALING
                 try:
                     parsed = self.yaml.load(d)
                     if parsed and isinstance(parsed, dict):
@@ -208,9 +246,10 @@ class Healer:
                         api = parsed.get('apiVersion')
                         name = parsed.get('metadata', {}).get('name')
 
-                        # --- NEW SHIELD INTEGRATION ---
-                        # We pass the current 'parsed' doc and the list of all parsed docs for context
-                        # Note: You'll need to prepare 'all_parsed_docs' in PASS 1
+                        # --- NEW: SCHEMA CHECK ---
+                        if not self.validate_schema(parsed, kind):
+                            self.detected_codes.add(f"SCHEMA_INVALID_STRUCTURE:{current_line_offset}")
+
                         findings = self.shield.scan(parsed, all_docs=all_parsed_docs)
                         for f in findings:
                             abs_line = (current_line_offset + f['line'] - 1) if f['line'] > 0 else current_line_offset
@@ -241,6 +280,7 @@ class Healer:
                                 self.detected_codes.add(f"SVC_SELECTOR_FIXED:{current_line_offset}")
 
                         self.apply_security_patches(parsed, kind, current_line_offset, apply_defaults)
+                        
                         buf = StringIO()
                         self.yaml.dump(parsed, buf)
                         healed_parts.append(buf.getvalue().rstrip())
@@ -248,29 +288,20 @@ class Healer:
                         healed_parts.append(d.strip())
 
                 except Exception as e:
-                    # 1. Start with the document's beginning as a fallback
-                    error_line = current_line_offset                    
-                    # 2. Safely grab the mark object
                     mark = getattr(e, 'problem_mark', None)                    
-                    # 3. Only access .line if mark is actually an object
-                    if mark is not None:
-                        error_line = current_line_offset + mark.line
+                    error_line = current_line_offset + (mark.line if mark else 0)
                     self.detected_codes.add(f"SYNTAX_ERROR:{error_line}")
                     healed_parts.append(d.strip())             
 
                 current_line_offset += lines_in_doc + 1
 
-            # Filter out any empty documents (ghost documents) before joining
+            # --- 4. GHOST DOCUMENT FILTERING ---
             healed_parts = [p for p in healed_parts if p.strip()]
             healed_final = ("---\n" if original_content.startswith("---") else "") + "\n---\n".join(healed_parts) + "\n"
             
             if return_content: return (healed_final, self.detected_codes)
             
-            # CRITICAL LOGIC FIX: Check if we actually improved the file
             changed = original_content.strip() != healed_final.strip()
-            
-            # If we detected a SYNTAX_ERROR but changed is False, it means we FAILED to fix it.
-            # We should only return True (changed) if the RegexShield actually sanitised the content.
             if changed and not dry_run:
                 with open(file_path, 'w') as f: f.write(healed_final)
                 
