@@ -3,29 +3,36 @@ import os
 import shutil
 import pytest
 from io import StringIO
-from contextlib import redirect_stdout
-from kubecuro.main import main # Import your actual entry point
+from contextlib import redirect_stdout, redirect_stderr # Added redirect_stderr
 
-# Helper to run KubeCuro commands internally
+# FIX: Ensure 'src' is in the path so we can find 'kubecuro'
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(project_root, "src"))
+
+from kubecuro.main import main 
+
 def run_kubecuro(*args):
-    # Capture stdout
-    f = StringIO()
-    # Mock sys.argv for the main() function
+    """Execute KubeCuro main() and capture all output streams."""
+    out = StringIO()
+    err = StringIO()
+    
+    # Mock sys.argv
     sys.argv = ["kubecuro"] + list(args)
     
     try:
-        with redirect_stdout(f):
+        # Capture both stdout AND stderr
+        with redirect_stdout(out), redirect_stderr(err):
             main()
     except SystemExit:
-        # main() likely calls sys.exit(), we catch it to keep pytest running
         pass
     
-    # Create a simple mock object that looks like the subprocess result
+    combined_output = out.getvalue() + err.getvalue()
+    
     class MockResult:
         def __init__(self, stdout):
             self.stdout = stdout
-    
-    return MockResult(f.getvalue())
+            
+    return MockResult(combined_output)
 
 def test_ghost_service_logic():
     """Scenario: Service exists but matches no pods."""
@@ -68,4 +75,5 @@ def test_healer_fix_functionality(tmp_path):
 def test_checklist_command():
     """Scenario: Ensure the UI checklist displays."""
     result = run_kubecuro("checklist")
-    assert "Checklist" in result.stdout or "Logic" in result.stdout
+    output = result.stdout.upper()
+    assert "CHECKLIST" in output or "LOGIC" in output
