@@ -53,7 +53,7 @@ def is_pro_user():
 # ===========================================
         
 # S-Tier Setup
-rich_traceback(console=Console(file=sys.stderr), show_locals=True, width=120)
+install(console=Console(file=sys.stderr), show_locals=True, width=120)
 logging.basicConfig(level="INFO", handlers=[RichHandler()], format="%(message)s")
 console = Console(force_terminal=True, width=120, color_system="256")
 
