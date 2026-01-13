@@ -9,6 +9,11 @@ from contextlib import redirect_stdout, redirect_stderr # Added redirect_stderr
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(project_root, "src"))
 
+# Get absolute path to /src
+abs_src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
+if abs_src_path not in sys.path:
+    sys.path.insert(0, abs_src_path)
+
 from kubecuro.main import main 
 
 def run_kubecuro(*args):
