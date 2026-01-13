@@ -618,7 +618,7 @@ class AuditEngineV2:
                 fpath.write_text(healed_content)
                 
                 for code in fix_codes:
-                    parts = code.split(":")
+                    #parts = code.split(":")
                     ident = f"{fname_full}:SYNTAX_FIXED"
                     if ident not in seen:
                         issues.append(AuditIssue(
