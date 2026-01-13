@@ -13,60 +13,9 @@ from typing import Tuple, Union, Optional, Set
 from io import StringIO
 from pathlib import Path
 from ruamel.yaml import YAML
+from kubecuro.shield import Shield, RegexShield
 
 logger = logging.getLogger(__name__)
-
-class RegexShield:
-    """Sanitizes raw text to prevent YAML Parser crashes from human 'dirty' typing."""
-    
-    @staticmethod
-    def sanitize(text: str) -> tuple[str, list]:
-        fixes = []
-        original = text
-        
-        # 1. FIX: Multi-colon or Trailing colon on image lines
-        if re.search(r'(image:\s*)"([^"]+)"\s*:', text):
-            text = re.sub(r'(image:\s*)"([^"]+)"\s*:', r'\1"\2"', text)
-            fixes.append("SYNTAX_REPAIRED")
-        
-        if re.search(r'image:\s*[:\s]{2,}', text):
-            text = re.sub(r'(image:\s*)[:\s]+', r'\1', text)
-            fixes.append("SYNTAX_REPAIRED")
-
-        # 2. Fixing 'tag: latest' spaces inside quotes
-        if ": latest" in text:
-            text = text.replace(": latest", ":latest")
-            fixes.append("SYNTAX_REPAIRED")
-
-        # 3. ELASTIC Indentation Fixer:
-        # Matches the indentation of the PREVIOUS line to maintain block integrity.
-        lines = text.splitlines()
-        fixed_lines = []
-        
-        for i in range(len(lines)):
-            current_line = lines[i]
-            
-            # Check if this line is a drifted 'command' or 'args'
-            if i > 0 and re.search(r'^\s+(command|args):', current_line):
-                # Get the indentation of the previous line (e.g., 'image:' or 'name:')
-                prev_line = lines[i-1]
-                prev_indent_match = re.match(r'^(\s*)', prev_line)
-                
-                if prev_indent_match:
-                    target_indent = prev_indent_match.group(1)
-                    # If current line starts with a list marker '-' handle that, 
-                    # otherwise just align the keys vertically.
-                    content = current_line.lstrip()
-                    fixed_lines.append(f"{target_indent}{content}")
-                    continue
-            
-            fixed_lines.append(current_line)
-        
-        text = "\n".join(fixed_lines)
-        if text.strip() != original.strip() and "SYNTAX_REPAIRED" not in fixes:
-            fixes.append("SYNTAX_REPAIRED")
-            
-        return text, fixes
 
 class Healer:
     def __init__(self):
@@ -76,16 +25,7 @@ class Healer:
         self.yaml.preserve_quotes = True
         
         # --- SHIELD INTEGRATION ---
-        try:
-            from kubecuro.shield import Shield
-            self.shield = Shield()
-        except ImportError:
-            try:
-                from shield import Shield
-                self.shield = Shield()
-            except ImportError:
-                self.shield = None
-                
+        self.shield = Shield()
         self.detected_codes: Set[str] = set()
 
     def parse_cpu(self, cpu_str: str) -> int:
@@ -215,6 +155,7 @@ class Healer:
             self.detected_codes = set()           
 
             # PASS 1: Metadata Map
+            all_parsed_docs = []
             label_map = {}
             for doc_str in raw_docs:
                 if not doc_str.strip(): continue
@@ -222,6 +163,7 @@ class Healer:
                 try:
                     temp_parsed = self.yaml.load(clean_d)
                     if temp_parsed and isinstance(temp_parsed, dict):
+                        all_parsed_docs.append(temp_parsed)
                         kind, name = temp_parsed.get('kind'), temp_parsed.get('metadata', {}).get('name')
                         if kind and name:
                             labels = None
@@ -255,9 +197,16 @@ class Healer:
                         api = parsed.get('apiVersion')
                         name = parsed.get('metadata', {}).get('name')
 
+                        # --- NEW SHIELD INTEGRATION ---
+                        # We pass the current 'parsed' doc and the list of all parsed docs for context
+                        # Note: You'll need to prepare 'all_parsed_docs' in PASS 1
+                        findings = self.shield.scan(parsed, all_docs=all_parsed_docs)
+                        for f in findings:
+                            # Map the Shield dict to your internal string format
+                            self.detected_codes.add(f"{f['code']}:{f['line']}")
+
                         # API & Selector Fixes
-                        if self.shield and api in self.shield.DEPRECATIONS:
-                            self.detected_codes.add(f"API_DEPRECATED:{current_line_offset}")
+                        if api in self.shield.DEPRECATIONS:
                             if apply_fixes:
                                 mapping = self.shield.DEPRECATIONS[api]
                                 new_api = mapping.get(kind, mapping.get("default")) if isinstance(mapping, dict) else mapping
@@ -318,5 +267,34 @@ if __name__ == "__main__":
     if len(sys.argv) < 2: 
         print("Usage: healer.py <file.yaml>")
         sys.exit(1)
-    res, codes = linter_engine(sys.argv[1], dry_run=True)
-    print(f"✅ Analyzed {sys.argv[1]} | Issues: {codes}" if codes else f"ℹ️ No issues for {sys.argv[1]}")
+
+    file_to_scan = sys.argv[1]
+    # We run with dry_run=True to get the findings without modifying the file immediately
+    res, codes = linter_engine(file_to_scan, dry_run=True)
+
+    print(f"\n{'='*60}")
+    print(f"🛡️  KUBE-SHIELD AUDIT REPORT: {file_to_scan}")
+    print(f"{'='*60}")
+
+    if not codes:
+        print("✅ No stability or security issues detected.")
+    else:
+        # Sort codes by line number for a clean read
+        sorted_findings = sorted(list(codes), key=lambda x: int(x.split(':')[-1]))
+        
+        for finding in sorted_findings:
+            code, line = finding.split(':')            
+            # Simple color logic for terminal
+            pref = "ℹ️"
+            if any(x in code for x in ["CRITICAL", "OOM", "PRIVILEGED"]): pref = "🔴"
+            elif any(x in code for x in ["HIGH", "WILD", "REMOVED"]): pref = "🟠"
+            elif "FIX" in code: pref = "🔧"            
+            print(f"Line {line.ljust(4)} | {pref} {code}")
+        print("-" * 60)
+        if res:
+            print(f"💾 STATS: Changes applied to {file_to_scan}")
+        else:
+            print(f"🔍 STATS: {len(codes)} issues found. No changes saved (Dry Run).")
+
+    print(f"{'='*60}\n")
+
