@@ -5,55 +5,25 @@ KubeCuro v1.0.0 - Kubernetes Logic Diagnostics & Auto-Healer ✨
 ═══════════════════════════════════════════════════════════════
 CNCF-Grade CLI 
 """
-import sys
-import os
-import logging
-import argparse
-import platform
-import time
-import json
-import re
-import difflib
-import argcomplete
-import random
-import contextlib
-import subprocess
-import yaml
+# Core Engine 
+from kubecuro.healer import linter_engine
+from kubecuro.synapse import Synapse
+from kubecuro.shield import Shield
+from kubecuro.models import AuditIssue
 
+import sys, os, logging, argparse, platform, time, json, re, difflib, argcomplete, random, contextlib, subprocess, yaml
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 from contextlib import contextmanager
-from argcomplete.completers import FilesCompleter
-
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.live import Live
-from rich.logging import RichHandler
-from rich.markdown import Markdown
-from rich.syntax import Syntax
-from rich.rule import Rule
-from rich.layout import Layout
-from rich.text import Text
-from rich.align import Align
-from rich.columns import Columns
-from rich.traceback import install as rich_traceback
-from rich import box
+from io import StringIO
+from rich import (Console, Table, Panel, Live, box, RichHandler, Markdown, Syntax, 
+                 Rule, Layout, Text, Align, Columns, rich_traceback as rtb)
+from rich.progress import (Progress, SpinnerColumn, TextColumn, BarColumn, MofNCompleteColumn, 
+                          TaskProgressColumn, ProgressBar, TimeElapsedColumn)
 from rich.console import Group
 from rich.padding import Padding
-from rich.progress import (
-    Progress, 
-    SpinnerColumn, 
-    TextColumn, 
-    BarColumn, 
-    MofNCompleteColumn,
-    ProgressBar,
-    TaskProgressColumn,
-    TimeElapsedColumn
-)
-
-# Core Engine (unchanged)
+from argcomplete.completers import FilesCompleter
 from kubecuro.healer import linter_engine
 from kubecuro.synapse import Synapse
 from kubecuro.shield import Shield
@@ -71,7 +41,6 @@ def is_pro_user():
     license_key = os.getenv("KUBECURO_PRO")
     return license_key in ["1", "unlocked", "pro"]
 # ===========================================
-
         
 # S-Tier Setup
 rich_traceback(console=Console(file=sys.stderr), show_locals=True, width=120)
@@ -483,6 +452,35 @@ class KubecuroCLI:
 class AuditEngineV2:
     """Production-grade analysis + healing engine."""
 
+    def _syntax_healer(self, file_path: str) -> tuple[str, List[str]]:
+        """YOUR PERFECT kubectl-lint logic integrated."""
+        from ruamel.yaml import YAML  # Already in requirements!
+        
+        yaml_parser = YAML()
+        yaml_parser.indent(mapping=2, sequence=4, offset=2)
+        yaml_parser.preserve_quotes = True
+        
+        original_content = Path(file_path).read_text()
+        
+        # YOUR GENIUS REGEX FIXES:
+        healed = re.sub(r'(^[ \t]*[\w.-]+)(?=[ \t]*$)', r'\1:', original_content, flags=re.MULTILINE)
+        healed = re.sub(r'(image:[ \t]*)([^"\s\n][^#\n]*:[^#\n]*)', r'\1"\2"', healed)
+        healed = re.sub(r'(^[ \t]*[\w.-]+):(?!\s| )', r'\1: ', healed, flags=re.MULTILINE)
+        healed = healed.replace('\t', '  ')
+        
+        # ruamel.yaml normalization (preserves comments!)
+        docs = list(yaml_parser.load_all(healed))
+        output_buffer = StringIO()
+        yaml_parser.dump_all(docs, output_buffer)
+        healed_final = output_buffer.getvalue()
+        
+        # Count fixes
+        diff = list(difflib.unified_diff(original_content.splitlines(), healed_final.splitlines(), lineterm=''))
+        fix_count = len([line for line in diff if line.startswith('+') and not line.startswith('+++')])
+        
+        codes = [f"SYNTAX_FIXED:{fix_count}"] if fix_count > 0 else []
+        return healed_final, codes
+
     def _silent_healer(self, fpath: str) -> tuple[str|None, list]:
         """100% silent healer - subprocess isolation."""
         
@@ -592,24 +590,29 @@ class AuditEngineV2:
             except yaml.YAMLError as yaml_err:
                 # 🎉 SYNTAX ERROR DETECTED!
                 line_num = getattr(yaml_err.problem_mark, 'line', 1) + 1
-                status_color = "red"
-                has_issues = True
+                status_color = "yellow"  # Will be fixed!
                 
-                ident = f"{fname_full}:{line_num}:SYNTAX_ERROR"
-                if ident not in seen:
-                    issues.append(AuditIssue(
-                        code="SYNTAX_ERROR",
-                        severity="CRITICAL",
-                        file=fname_full,
-                        message=f"YAML Syntax error at line {line_num}: {yaml_err.problem}",
-                        line=line_num
-                    ))
-                    seen.add(ident)
-                problematic_files.append(fname)
+                # 🔥 Fix Syntax
+                healed_content, fix_codes = self._syntax_healer(str(fpath))
+                fpath.write_text(healed_content)  # Auto-save!
+                
+                # Report fixes
+                for code in fix_codes:
+                    parts = code.split(":")
+                    ident = f"{fname_full}:{parts[1]}:SYNTAX_FIXED" # Use line_num
+                    if ident not in seen:
+                        issues.append(AuditIssue(
+                            code="SYNTAX_FIXED",
+                            severity="MEDIUM",
+                            file=fname_full,
+                            message=f"Syntax healed: {code}",
+                            line=line_num
+                        ))
+                        seen.add(ident)
                 
                 if show_progress:
-                    console.print(f"  [{i:2d}/{len(files)}] [dim]{fname:<35}[/] [bold red]✗[/bold red]")
-                continue  # Skip further analysis for syntax-broken files
+                    console.print(f"  [{i:2d}/{len(files)}] [dim]{fname:<35}[/] [bold yellow]✓[/]")
+                continue
             
             # 2️⃣ STATUS CHECK (only valid YAML files)
             try:
