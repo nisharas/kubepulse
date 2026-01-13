@@ -602,7 +602,7 @@ class AuditEngineV2:
                 docs = list(yaml_parser.load_all(content))
                 if not docs:
                     raise yaml.YAMLError("Empty YAML")
-            except yaml.YAMLError as yaml_err:
+            except (yaml.YAMLError, ruamel.yaml.scanner.ScannerError, ruamel.yaml.parser.ParserError) as yaml_err:
                 # 🎉 SYNTAX ERROR DETECTED!
                 line_num = getattr(yaml_err.problem_mark, 'line', 1) + 1
                 status_color = "yellow"  
