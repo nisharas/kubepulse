@@ -7,16 +7,17 @@ import pytest
 # Helper to run KubeCuro commands
 def run_kubecuro(*args):
     env = os.environ.copy()
-    env["PYTHONPATH"] = os.getcwd()
-    # Force Rich to output text even in non-interactive shells
+    # FIX: Point to project ROOT (where src/ lives)
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env["PYTHONPATH"] = project_root
     env["FORCE_COLOR"] = "1" 
-    # Tell KubeCuro we are in a test env so it prints the "Clean" logs
     env["PYTEST_CURRENT_TEST"] = "true" 
     
     return subprocess.run(
         [sys.executable, "-m", "kubecuro.main", *args],
         capture_output=True,
-        text=True
+        text=True,
+        env=env
     )
 
 def test_ghost_service_logic():
