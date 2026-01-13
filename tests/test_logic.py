@@ -7,19 +7,26 @@ import site
 
 # Helper to run KubeCuro commands
 def run_kubecuro(*args):
-    # Get the actual python executing this test
+    # Use the same python executable that is running pytest
     pytest_python = sys.executable 
     
     env = os.environ.copy()
+    # Project root where pyproject.toml lives
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
-    # FIX: Get the site-packages paths from the current running environment
-    # This ensures 'yaml', 'rich', etc., are found by the subprocess
-    current_site_packages = site.getsitepackages()
+    # 1. Start with the project source directories
+    python_paths = [
+        project_root,
+        os.path.join(project_root, "src")
+    ]
     
-    # Join project root with current environment's packages
-    paths = [project_root, os.path.join(project_root, "src")] + current_site_packages
-    env["PYTHONPATH"] = os.pathsep.join(paths)
+    # 2. CRITICAL: Inject the current process's sys.path
+    # This ensures that 'yaml', 'rich', etc., installed by the CI 
+    # are visible to the subprocess.
+    python_paths.extend(sys.path)
+    
+    # Filter out empty strings and join with the OS-specific separator
+    env["PYTHONPATH"] = os.pathsep.join([p for p in python_paths if p])
     
     env["FORCE_COLOR"] = "1" 
     env["PYTEST_CURRENT_TEST"] = "true" 
