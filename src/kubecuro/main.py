@@ -619,11 +619,11 @@ class AuditEngineV2:
                 
                 for code in fix_codes:
                     parts = code.split(":")
-                    ident = f"{fname_full}:{parts[1]}:SYNTAX_FIXED"
+                    ident = f"{fname_full}:SYNTAX_FIXED"
                     if ident not in seen:
                         issues.append(AuditIssue(
                             code="SYNTAX_FIXED", severity="MEDIUM",
-                            file=fname_full, message=f"Syntax healed: {code}", line=line_num
+                            file=fname_full, message=f"Syntax healed: {code}", line=0
                         ))
                         seen.add(ident)
                 
