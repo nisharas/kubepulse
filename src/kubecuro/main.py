@@ -12,22 +12,32 @@ from kubecuro.shield import Shield
 from kubecuro.models import AuditIssue
 
 import sys, os, logging, argparse, platform, time, json, re, difflib, argcomplete, random, contextlib, subprocess, yaml
+import rich.box as box
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 from contextlib import contextmanager
 from io import StringIO
-from rich import (Console, Table, Panel, Live, box, RichHandler, Markdown, Syntax, 
-                 Rule, Layout, Text, Align, Columns, rich_traceback as rtb)
+
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.live import Live
+from rich.logging import RichHandler
+from rich.markdown import Markdown
+from rich.syntax import Syntax
+from rich.rule import Rule
+from rich.layout import Layout
+from rich.text import Text
+from rich.align import Align
+from rich.columns import Columns
+from rich.console import Group
+from rich.traceback import install
 from rich.progress import (Progress, SpinnerColumn, TextColumn, BarColumn, MofNCompleteColumn, 
                           TaskProgressColumn, ProgressBar, TimeElapsedColumn)
-from rich.console import Group
+
 from rich.padding import Padding
 from argcomplete.completers import FilesCompleter
-from kubecuro.healer import linter_engine
-from kubecuro.synapse import Synapse
-from kubecuro.shield import Shield
-from kubecuro.models import AuditIssue
 
 # ========== KUBECURO FREEMIUM GATE ==========
 PRO_RULES = {
