@@ -462,21 +462,29 @@ class KubecuroCLI:
 # ═══════════════════════════════════════════════
 class AuditEngineV2:
     """Production-grade analysis + healing engine."""
-
-    def _silent_healer(self, fpath: str) -> tuple[str|None, list]:
-        """FIX: Route to production healer.py"""
+    def _silent_healer(self, fpath: str) -> tuple[Optional[str], list]:
+        """Unified Healer Route: Handles logic fixes and Regex recovery."""
         try:
+            # Fixed: Ensure linter_engine is available
             from kubecuro.healer import linter_engine
-            # EXACT healer.py signature:
             content, codes = linter_engine(
                 file_path=fpath,
                 apply_api_fixes=True,
-                apply_defaults=False,
+                apply_defaults=self.apply_defaults,
                 dry_run=False,
                 return_content=True
             )
             return content, list(codes)
         except Exception:
+            # Fallback to Regex repair if YAML is unparseable
+            try:
+                raw_text = Path(fpath).read_text()
+                repaired = re.sub(r'(image:\s*)[:\s]+', r'\1', raw_text)
+                repaired = re.sub(r'^\s+command:', '    command:', repaired, flags=re.MULTILINE)
+                if repaired != raw_text:
+                    return repaired, ["SYNTAX_REPAIRED:1"]
+            except Exception:
+                pass
             return None, []
     
     def __init__(self, target: Path, dry_run: bool, yes: bool, show_all: bool, baseline: set, apply_defaults: bool = False):
@@ -486,6 +494,11 @@ class AuditEngineV2:
         self.show_all = show_all
         self.baseline = baseline
         self.apply_defaults = apply_defaults
+        try:
+            from kubecuro.healer import linter_engine
+            self.healer = linter_engine
+        except ImportError:
+            self.healer = None
 
     def execute(self, command: str):
         """Execute with S-Tier progress UX."""
@@ -530,9 +543,16 @@ class AuditEngineV2:
                 self._render_file_table(reporting_issues)  # Show actual issues!
             else:
                 self._execute_zero_downtime_fixes()
-    
+
     def audit(self) -> List[AuditIssue]:
-        """Full pipeline: YAML Syntax → Synapse → Shield → Healer with Smooth UX."""
+        """
+        S-Tier Pipeline: 
+        1. YAML Syntax Validation 
+        2. Logic Analysis (Shield) 
+        3. Healer Recommendations (OOM/Resource Checks)
+        """
+        from kubecuro.healer import linter_engine  # Efficient localized import
+        
         syn = Synapse()
         shield = Shield()
         issues = []
@@ -542,144 +562,125 @@ class AuditEngineV2:
         if not files:
             return []
         
+        total_files = len(files)
         SUMMARY_THRESHOLD = 20
-        if len(files) > SUMMARY_THRESHOLD:
-            console.print(f"[bold cyan]🔍 Analyzing {len(files)} manifests (summary mode)...[/]")
-            show_progress = False
-        else:
-            console.print(f"[bold cyan]🔍 Analyzing {len(files)} manifests...[/]")
-            show_progress = True
+        show_progress = total_files <= SUMMARY_THRESHOLD
         
-        devnull = open(os.devnull, 'w')
+        console.print(f"[bold cyan]🔍 Analyzing {total_files} manifests{'...' if show_progress else ' (summary mode)...'}[/]")
+        
         problematic_files = []
-        
+        devnull = open(os.devnull, 'w')
+
         for i, fpath in enumerate(files, 1):
-            fname = fpath.name
-            status_color = "green"
             abs_fpath = fpath.resolve()
             fname_full = str(abs_fpath)
-            has_issues = False
+            fname_short = fpath.name
+            current_file_has_issues = False
             
-            # 🔥 1️⃣ YAML SYNTAX CHECK (NEW - CRITICAL!)
-            content = fpath.read_text()
+            # --- PHASE 1: SYNTAX CHECK ---
             try:
+                content = fpath.read_text()
                 yaml_parser = ruamel.yaml.YAML(typ='safe')
                 yaml_parser.allow_duplicate_keys = True
-                docs = list(yaml_parser.load_all(content))
-                if not docs:
-                    raise Exception("Empty YAML")
-            except Exception as yaml_err:  # 🔥 CATCH EVERYTHING
-                # 🎉 ANY YAML ISSUE → AUTO-HEAL
+                # Load all docs to validate full file structure
+                list(yaml_parser.load_all(content))
+            except Exception as yaml_err:
+                # Syntax error detected! 
                 line_num = getattr(getattr(yaml_err, 'problem_mark', None), 'line', 1) + 1
-                status_color = "yellow"
-                
-                # 1. REPORT SYNTAX ERROR TO MAIN ISSUES (NO detected_issues!)
                 ident = f"{fname_full}:SYNTAX_ERROR"
+                
                 if ident not in seen:
                     issues.append(AuditIssue(
-                        code="SYNTAX_ERROR", 
-                        severity="HIGH",
-                        file=fname_full, 
-                        message=f"YAML syntax error at line {line_num}: {str(yaml_err)[:80]}", 
+                        code="SYNTAX_ERROR",
+                        severity="CRITICAL",
+                        file=fname_full,
+                        message=f"YAML syntax error: {str(yaml_err).split(':', 1)[-1].strip()}",
                         line=line_num
                     ))
                     seen.add(ident)
                 
-                console.print(f"  [{i:2d}/{len(files)}] [dim]{fname:<35}[/] [bold yellow]⚠️[/]")
-                continue 
-            
-            # 2️⃣ STATUS CHECK (only valid YAML files)
+                problematic_files.append(fname_short)
+                if show_progress:
+                    console.print(f"  [{i:2d}/{total_files}] [dim]{fname_short:<35}[/] [bold red]✘[/]")
+                continue # Skip Shield/Synapse logic analysis as YAML is unparseable
+
+            # --- PHASE 2: LOGIC & HEALER ANALYSIS (Valid YAML Only) ---
             try:
                 with contextlib.redirect_stderr(devnull):
+                    # 1. Logic Scan (Shield)
                     syn.scan_file(str(fpath))
                     docs = [d for d in syn.all_docs if d.get('_origin_file') == str(fpath)]
-                    shield_issues = sum(1 for doc in docs for _ in shield.scan(doc, syn.all_docs))
                     
-                    if not os.getenv('PYTEST_CURRENT_TEST'):
-                        _, codes = self._silent_healer(str(abs_fpath))
-                        healer_issues = len([c for c in codes if not c.startswith('OOM_FIXED')])
-                        has_syntax_error = any("SYNTAX_ERROR" in str(c) for c in codes)
-                    
-                    total_issues = shield_issues + healer_issues
-                    if total_issues > 0:
-                        status_color = "yellow"
-                        has_issues = True
-                    else:
-                        status_color = "green"
-            except Exception:
-                status_color = "red"
-                has_issues = True
-            
-            if show_progress:
-                console.print(f"  [{i:2d}/{len(files)}] [dim]{fname:<35}[/] [bold {status_color}]✓[/]")
-            elif has_issues and len(problematic_files) < 10:
-                console.print(f"  ⚠️  [dim]{fname:<35}[/] [bold {status_color}]✗[/]")
-                problematic_files.append(fname)
-            
-            # 3️⃣ COLLECT ISSUES (Silent healer) - VALID YAML ONLY
-            try:
-                with contextlib.redirect_stderr(devnull):
-                    docs = [d for d in syn.all_docs if d.get('_origin_file') == str(fpath)]
                     for doc in docs:
                         for finding in shield.scan(doc, syn.all_docs):
                             code = str(finding['code']).upper()
-                            line = finding.get('line', 1)
-                            ident = f"{fname_full}:{line}:{code}"
                             if code in PRO_RULES and not is_pro_user():
                                 continue
+                                
+                            line = finding.get('line', 1)
+                            ident = f"{fname_full}:{line}:{code}"
                             if ident not in seen:
                                 issues.append(AuditIssue(
-                                    code=code, severity=finding.get('severity', 'HIGH'),
-                                    file=fname_full, message=finding['msg'], line=line
+                                    code=code, 
+                                    severity=finding.get('severity', 'HIGH'),
+                                    file=fname_full, 
+                                    message=finding['msg'], 
+                                    line=line
                                 ))
                                 seen.add(ident)
-                    
-                    if not os.getenv('PYTEST_CURRENT_TEST'):
-                        _, codes = self._silent_healer(str(abs_fpath))
+                                current_file_has_issues = True
+
+                    # 2. Healer Scan (Resource Limits/Defaults)
+                    # Note: We use the engine directly to avoid double-reading the file
+                    _, codes = self._silent_healer(fname_full)
+                    for code_entry in codes:
+                        parts = str(code_entry).split(":")
+                        ccode = parts[0].upper()
                         
-                        for code in codes:
-                            parts = str(code).split(":")
-                            ccode = parts[0].upper()
-                            line = int(parts[1]) if len(parts) > 1 and parts[1].strip() else 1
-                            ident = f"{fname_full}:{line}:{ccode}"
+                        # Filter out fixed flags and Pro rules
+                        if "FIXED" in ccode or (ccode in PRO_RULES and not is_pro_user()):
+                            continue
                             
-                            if ccode in PRO_RULES and not is_pro_user():
-                                continue
-                                
-                            if ccode == "SYNTAX_ERROR":
-                                msg = "CRITICAL: YAML Syntax error prevents logic analysis"
-                                severity = "CRITICAL"
-                            elif ccode == "OOM_RISK":
-                                msg = "Container missing resource limits (Risk of OOMKill)"
-                                severity = "HIGH"
-                            elif ccode == "OOM_FIXED":
-                                continue
-                            else:
-                                msg = f"Healer Recommendation: {ccode}"
-                                severity = "MEDIUM"
-                                
-                            if ident not in seen:
-                                issues.append(AuditIssue(
-                                    code=ccode, severity=severity, file=fname_full, 
-                                    message=msg, line=line
-                                ))
-                                seen.add(ident)
+                        line = int(parts[1]) if len(parts) > 1 and parts[1].strip().isdigit() else 1
+                        ident = f"{fname_full}:{line}:{ccode}"
+                        
+                        if ident not in seen:
+                            # Map healer codes to human-readable issues
+                            msg_map = {
+                                "OOM_RISK": "Container missing resource limits (Risk of OOMKill)",
+                                "LIVENESS_MISSING": "No Liveness Probe defined for container",
+                                "READINESS_MISSING": "No Readiness Probe defined for container"
+                            }
+                            issues.append(AuditIssue(
+                                code=ccode,
+                                severity="HIGH" if "OOM" in ccode else "MEDIUM",
+                                file=fname_full,
+                                message=msg_map.get(ccode, f"Healer Recommendation: {ccode}"),
+                                line=line
+                            ))
+                            seen.add(ident)
+                            current_file_has_issues = True
+
+                # --- PHASE 3: PROGRESS UX ---
+                if current_file_has_issues:
+                    problematic_files.append(fname_short)
+                
+                if show_progress:
+                    status_icon = "[bold yellow]⚠[/]" if current_file_has_issues else "[bold green]✓[/]"
+                    console.print(f"  [{i:2d}/{total_files}] [dim]{fname_short:<35}[/] {status_icon}")
+                elif current_file_has_issues and len(problematic_files) <= 10:
+                     # Peek for summary mode
+                     console.print(f"  [yellow]⚠[/][dim] {fname_short}[/]")
+
             except Exception as e:
-                console.print(f"[dim]Issue collection failed for {fname}: {e}[/dim]")
-        
+                if show_progress:
+                    console.print(f"  [{i:2d}/{total_files}] [dim]{fname_short:<35}[/] [bold red]ERR[/]")
+                console.print(f"[dim]Logic scan failed for {fname_short}: {e}[/dim]")
+
         devnull.close()
         
-        if len(files) > SUMMARY_THRESHOLD:
-            console.print(f"\n[bold cyan]📊 SUMMARY:[/]")
-            console.print(f"  🟢 Clean: {len(files) - len(problematic_files)} files")
-            if problematic_files:
-                console.print(f"  🟡 Issues: {len(problematic_files)} files")
-                console.print(f"  First 10: {', '.join(problematic_files[:10])}")
-                if len(problematic_files) > 10:
-                    console.print(f"  ... and {len(problematic_files)-10} more")
-        
-        console.print()
-        
+        # --- PHASE 4: GLOBAL SYNC ---
+        # Catch any lingering Synapse-level cluster issues (e.g. orphan services)
         for issue in syn.audit():
             if issue.code in PRO_RULES and not is_pro_user():
                 continue
@@ -687,7 +688,16 @@ class AuditEngineV2:
             if ident not in seen:
                 issues.append(issue)
                 seen.add(ident)
+
+        # Final Summary for large batches
+        if not show_progress:
+            clean_count = total_files - len(problematic_files)
+            console.print(f"\n[bold cyan]📊 SUMMARY:[/]")
+            console.print(f"  🟢 Clean: {clean_count} files")
+            if problematic_files:
+                console.print(f"  🟡 Issues: {len(problematic_files)} files")
         
+        console.print()
         return issues
     
     def _find_yaml_files(self) -> List[Path]:
@@ -796,109 +806,93 @@ class AuditEngineV2:
 
     def _health_score_panel(self, issues: List[AuditIssue]):
         """
-        S-Tier Integrated Health Matrix.
-        Combines weighted integrity scoring, high-fidelity progress visualization, 
-        and contextual intelligence.
+        S-Tier Integrated Health Matrix with Syntax vs. Logic sub-scoring.
         """
-        # 1. DATA PREP: WEIGHTED SCORING
-        total_count = len(issues)
-        high = [i for i in issues if 'HIGH' in i.severity.upper() or 'CRITICAL' in i.severity.upper()]
-        med = [i for i in issues if 'MEDIUM' in i.severity.upper()]
-        low = [i for i in issues if 'LOW' in i.severity.upper() or 'INFO' in i.severity.upper()]
-    
-        # Deduction Logic: High-risk issues are 7.5x more damaging than Low
-        deduction = (len(high) * 15) + (len(med) * 5) + (len(low) * 2)
-        score = max(0, 100 - deduction)
-    
-        # Dynamic Theme Mapping
-        if score >= 90:
-            accent, status = "spring_green3", "OPTIMAL"
-        elif score >= 70:
-            accent, status = "yellow", "DEGRADED"
-        elif score >= 40:
-            accent, status = "orange3", "UNHEALTHY"
+        # 1. DATA PREP: CALCULATE METRICS
+        total_files = len(self._find_yaml_files())
+        syntax_errors = [i for i in issues if i.code == "SYNTAX_ERROR"]
+        
+        # Calculate Syntax Integrity %
+        if total_files > 0:
+            syntax_score = int(((total_files - len(syntax_errors)) / total_files) * 100)
         else:
-            accent, status = "bright_red", "CRITICAL"
-    
-        # 2. COMPONENT: HIGH-FIDELITY PROGRESS BAR
+            syntax_score = 100
+
+        # Logic Deductions (Excluding syntax errors to avoid double-counting)
+        logic_issues = [i for i in issues if i.code != "SYNTAX_ERROR"]
+        high = [i for i in logic_issues if 'HIGH' in i.severity.upper() or 'CRITICAL' in i.severity.upper()]
+        med = [i for i in logic_issues if 'MEDIUM' in i.severity.upper()]
+        low = [i for i in logic_issues if 'LOW' in i.severity.upper() or 'INFO' in i.severity.upper()]
+        
+        # Deduct 15 for High, 5 for Med, 2 for Low
+        logic_deduction = (len(high) * 15) + (len(med) * 5) + (len(low) * 2)
+        logic_score = max(0, 100 - logic_deduction)
+
+        # Global Integrity (Average of both, weighted toward Syntax)
+        # If syntax is broken, the cluster is inherently unstable.
+        score = int((syntax_score * 0.6) + (logic_score * 0.4))
+
+        # Dynamic Theme Mapping
+        if score >= 90: accent, status = "spring_green3", "OPTIMAL"
+        elif score >= 70: accent, status = "yellow", "DEGRADED"
+        elif score >= 40: accent, status = "orange3", "UNHEALTHY"
+        else: accent, status = "bright_red", "CRITICAL"
+
+        # 2. COMPONENT: SUB-SCORE GRID
+        sub_score_table = Table.grid(expand=True)
+        sub_score_table.add_column(style="bold white", width=20)
+        sub_score_table.add_column(justify="right")
+        
+        syn_color = "green" if syntax_score > 95 else "red" if syntax_score < 80 else "yellow"
+        log_color = "green" if logic_score > 90 else "yellow"
+        
+        sub_score_table.add_row("SYNTAX INTEGRITY", f"[{syn_color}]{syntax_score}%[/]")
+        sub_score_table.add_row("LOGIC RELIABILITY", f"[{log_color}]{logic_score}%[/]")
+
+        # 3. COMPONENT: MAIN PROGRESS BAR
         bar = ProgressBar(
-            total=100,
-            completed=score,
-            width=50,
-            style="dim white",
-            complete_style=accent,
-            finished_style=accent
+            total=100, completed=score, width=50,
+            style="dim white", complete_style=accent, finished_style=accent
         )
-    
-        # 3. COMPONENT: METRIC GRID
+
+        # 4. COMPONENT: METRIC GRID
         metrics_grid = Table.grid(expand=True)
         metrics_grid.add_column(justify="left", ratio=1)
         metrics_grid.add_column(justify="center", ratio=2)
         metrics_grid.add_column(justify="right", ratio=1)
-    
+
         metrics_grid.add_row(
             Text.from_markup(f"[bold white]STATUS[/]\n[{accent}]{status}[/]"),
             Group(
-                Text.from_markup(f"[bold white]CLUSTER INTEGRITY: {score}%[/]"),
+                Text.from_markup(f"[bold white]OVERALL CLUSTER HEALTH: {score}%[/]"),
                 bar
             ),
-            Text.from_markup(f"[bold white]VULNERABILITIES[/]\n[bold cyan]{total_count}[/] total")
+            sub_score_table
         )
-    
-        # 4. COMPONENT: SEVERITY CHIPS
+
+        # 5. FINAL ASSEMBLY
+        console.print(Rule(style="dim magenta"))
+        
         severity_breakdown = Columns([
-            f"[bold red]🔴 {len(high)} Critical[/]",
+            f"[bold red]🔴 {len(high) + len(syntax_errors)} Critical[/]",
             f"[bold yellow]🟡 {len(med)} Warning[/]",
             f"[bold green]🟢 {len(low)} Info[/]"
         ])
-    
-        # 5. COMPONENT: DYNAMIC INSIGHT ENGINE
-        if not issues:
-            tip_title = "✨ SYSTEM STATUS"
-            tip_content = "Manifests are logic-perfect. Ready for production deployment."
-            tip_color = "spring_green3"
-        elif high:
-            top_code = high[0].code
-            top_file = Path(high[0].file).name  # Extract filename
-            tip_title = "⚠️ CRITICAL ACTION REQUIRED"
-            # 🆕 Show ALL high-risk files count
-            high_files = ', '.join(Path(i.file).name for i in high[:3])  # Top 3 files
-            if len(high) > 3:
-                high_files += f" + {len(high)-3} more"
-            tip_content = f"{len(high)} high-risk files detected ({high_files}). Run [bold cyan]kubecuro fix --apply-defaults[/] to auto-fix ALL."
-            tip_color = "bright_red"
-        elif any(i.code == "OOM_RISK" for i in issues):
-            tip_title = "💡 PERFORMANCE ADVISORY"
-            tip_content = "Resource limits are missing. Execute [bold cyan]kubecuro fix --apply-defaults[/] to inject conservative CPU/Memory bounds."
-            tip_color = "yellow"
-        else:
-            tips = [
-                "Use [bold]kubecuro baseline[/] to suppress known technical debt from future scans.",
-                "Run [bold]kubecuro checklist[/] to explore all 50+ available production logic rules.",
-                "Pro-Tip: Single-replica deployments found. Consider increasing replicas for High Availability."
-            ]
-            tip_title = "💡 PRO-TIP"
-            tip_content = random.choice(tips)
-            tip_color = "cyan"
-    
-        # 6. FINAL ASSEMBLY
-        # We stack everything into a single layout group
-        console.print(Rule(style="dim magenta"))
-        
+
         dashboard_content = Group(
             metrics_grid,
             Rule(style="dim"),
             severity_breakdown,
-            Padding("", (1, 0)), # Spacer
+            Padding("", (1, 0)),
             Panel(
-                Text.from_markup(tip_content),
-                title=f"[bold {tip_color}]{tip_title}[/]",
+                self._generate_tip(issues, high, syntax_errors),
+                title=f"[bold]✨ INSIGHT ENGINE[/]",
                 title_align="left",
-                border_style=tip_color,
+                border_style="bright_magenta",
                 box=box.SIMPLE_HEAD
             )
         )
-    
+
         console.print(
             Panel(
                 dashboard_content,
@@ -909,67 +903,94 @@ class AuditEngineV2:
             )
         )
 
+    def _generate_tip(self, issues, high, syntax_errors) -> str:
+        """Helper to generate dynamic insight text."""
+        if syntax_errors:
+            return f"[bold red]CRITICAL:[/bold red] {len(syntax_errors)} files have invalid YAML syntax. These will fail 'kubectl apply' immediately. Run [bold cyan]kubecuro fix[/] to attempt auto-repair."
+        if high:
+            return f"Logic risk detected in {len(high)} manifests. Deployment may succeed but result in OOMKills or downtime."
+        return "All manifests are syntactically and logically sound. Ready for CI/CD pipeline."
+
     def _execute_zero_downtime_fixes(self):
-        """Production-grade atomic fixes with smart progress."""
+        """Production-grade atomic fixes with raw-recovery for syntax errors."""
         files = self._find_yaml_files()
         if not files:
             console.print("[yellow]No YAML files found[/]")
             return
         
         SUMMARY_THRESHOLD = 20
-        if len(files) > SUMMARY_THRESHOLD:
-            console.print(f"[bold cyan]❤️ Healing {len(files)} files (summary mode)...[/]")
-            show_progress = False
+        show_progress = len(files) <= SUMMARY_THRESHOLD
+        
+        if show_progress:
+            console.print(f"[bold cyan]❤️  Healing {len(files)} files...[/]")
         else:
-            console.print(f"[bold cyan]❤️ Healing {len(files)} files...[/]")
-            show_progress = True
-        
-        if self.dry_run:
-            console.print("[cyan]🚀 DRY-RUN: Would analyze + fix files[/]")
-            if show_progress:
-                for fpath in files:
-                    console.print(f"  [dim]{fpath.name}[/] → [bold cyan]PREVIEW ONLY[/]")
-            console.print("[bold green]✅ DRY-RUN COMPLETE - No files modified[/]")
-            return
-        
+            console.print(f"[bold cyan]❤️  Healing {len(files)} files (summary mode)...[/]")
+
         fixed_count = 0
         problematic_files = []
         
         for i, fpath in enumerate(files, 1):
             original = self._safe_read(fpath)
+            # Try standard healing
             fixed_content, codes = self._silent_healer(str(fpath))
             
-            if (isinstance(fixed_content, str) and fixed_content.strip() and 
-                fixed_content.strip() != original.strip()):
-                
+            # --- ENHANCEMENT: RAW RECOVERY ---
+            # If healer returned None (likely a syntax crash), it means 
+            # we need to pass the raw string directly to a recovery function
+            if fixed_content is None:
+                # Assuming linter_engine can be imported directly for emergency string repair
+                try:
+                    fixed_content, codes = linter_engine(
+                        file_path=str(fpath),
+                        apply_api_fixes=True,
+                        return_content=True,
+                        # We don't pass yaml_docs here, forcing healer to use regex/string logic
+                    )
+                except:
+                    fixed_content = None
+
+            # Check if we actually changed anything
+            has_changed = (isinstance(fixed_content, str) and 
+                          fixed_content.strip() and 
+                          fixed_content.strip() != original.strip())
+
+            if has_changed:
                 if self._atomic_fix(fpath, original, fixed_content):
                     fixed_count += 1
                     problematic_files.append(fpath.name)
                     
-                    # OOM_FIXED recommendation
+                    # Log specific improvements (OOM, Syntax, etc.)
                     for code in codes:
-                        if "OOM_FIXED" in code:
+                        if "OOM_FIXED" in code or "SYNTAX_REPAIRED" in code:
                             try:
-                                line_num = code.split(":")[1]
-                                console.print(f"  [bold blue]💡 Line {line_num}:[/] [dim]Applied conservative resource limits to {fpath.name}.[/]")
-                                console.print(f"     [italic]Note: Admin MUST tune these values to match actual app load.[/]")
-                            except IndexError:
-                                pass
-            
-            if show_progress:
-                status_color = "yellow" if problematic_files else "green"
-                console.print(f"  [{i:2d}/{len(files)}] [dim]{fpath.name:<35}[/] [bold {status_color}]✓[/]")
-        
-        # 🆕 SUMMARY
-        if len(files) > SUMMARY_THRESHOLD:
-            console.print(f"\n[bold green]✨ {fixed_count}/{len(files)} files healed!")
-            if problematic_files:
-                console.print(f"Fixed: {', '.join(problematic_files[:5])}...")
-        
-        else:
-            console.print(f"\n[bold green]✨ {fixed_count}/{len(files)} files healed![/]")
+                                parts = code.split(":")
+                                line_info = f"Line {parts[1]}" if len(parts) > 1 else "Global"
+                                msg = "Applied resource limits" if "OOM" in code else "Repaired YAML structure"
+                                console.print(f"   [bold blue]💡 {line_info}:[/] [dim]{msg} in {fpath.name}.[/]")
+                            except Exception: pass
 
-    
+            if show_progress:
+                # If the file was problematic but we fixed it, show yellow check
+                # If it was clean from the start, show green check
+                file_status = "yellow" if has_changed else "green"
+                console.print(f"  [{i:2d}/{len(files)}] [dim]{fpath.name:<35}[/] [bold {file_status}]✓[/]")
+        
+        # Final Summary Panel
+        self._render_fix_summary(fixed_count, len(files), problematic_files)
+
+    def _render_fix_summary(self, fixed, total, names):
+        """Clean summary output for the fix command."""
+        if fixed == 0:
+            console.print(f"\n[bold green]✅ Scan complete: All {total} files are healthy (no changes needed).[/]")
+        else:
+            console.print(f"\n[bold green]✨ {fixed}/{total} files successfully healed![/]")
+            if names:
+                subset = names[:5]
+                name_str = ", ".join(subset)
+                if len(names) > 5:
+                    name_str += f" ...and {len(names)-5} more"
+                console.print(f"[dim]Modified: {name_str}[/]")
+  
     def _safe_read(self, fpath: Path) -> str:
         """Safe file read."""
         try:
@@ -977,26 +998,39 @@ class AuditEngineV2:
                 return f.read()
         except Exception:
             return ""
-    
+
     def _atomic_fix(self, fpath: Path, original: str, fixed: str) -> bool:
-        """Zero-downtime atomic file replacement."""
+        """
+        Zero-downtime atomic file replacement with hardware-level durability.
+        """
         if self.dry_run:
-            console.print(f"[cyan]DRY-RUN: Would fix [bold]{fpath.name}[/][cyan]")
+            self.console.print(f"[cyan]DRY-RUN: Would fix [bold]{fpath.name}[/]")
             return True
         
         backup = fpath.with_suffix(CONFIG.BACKUP_SUFFIX)
+        
         try:
-            # Atomic swap
+            # 1. Rotate the existing file to a backup
+            # This clears the way for the new file while preserving the original
             fpath.rename(backup)
-            with open(fpath, 'w') as f:
+            
+            # 2. Write new content to the target path
+            with open(fpath, 'w', encoding='utf-8') as f:
                 f.write(fixed)
-            console.print(f"[bold green]✅ FIXED: [code]{fpath.name}[/][green]")
+                
+                # RECOMMENDATION: Ensure data is physically on the disk
+                f.flush()            # Clear Python internal buffers
+                os.fsync(f.fileno()) # Force the OS to write to physical storage
+                
+            self.console.print(f"[bold green]✅ FIXED: {fpath.name}[/]")
             return True
+            
         except Exception as e:
-            # Rollback
-            if backup.exists():
+            # 3. Fail-safe: If anything went wrong during the write, restore backup
+            if backup.exists() and not fpath.exists():
                 backup.rename(fpath)
-            console.print(f"[bold red]⚠️  {fpath.name}: {e}[/bold red]")
+                
+            self.console.print(f"[bold red]⚠️  Failed to fix {fpath.name}: {e}[/]")
             return False
 
 # ═══════════════════════════════════════════════════════════════
